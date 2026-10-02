@@ -1,0 +1,20 @@
+{
+  "world_id": "5fcf2cb9-3ad4-467c-b082-5f6319e56778",
+  "operation_id": "336a35f4-8253-49de-b59f-75c4d064d23e",
+  "cost": {
+    "total_credits": 230,
+    "line_items": [
+      {
+        "name": "Pano generation (image, non-pano)",
+        "credits": 80
+      },
+      {
+        "name": "Draft world generation",
+        "credits": 150
+      }
+    ]
+  },
+  "semantics_metadata": null,
+  "mode": "real-unmodified-photo",
+  "furniture_generated": false
+}

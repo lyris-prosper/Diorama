@@ -39,3 +39,14 @@
 5. 导入完成的房间后手动校准地面，逐件放置、旋转、缩放、收回；核对 splat 遮挡和比例。
 
 以上未完成项是交付限制，不是已通过的测试。
+
+## 2026-10-03 redesign and automatic recognition
+
+- Warm architectural concept image integrated into the upload workspace; new sage/cream surfaces, larger readable controls, mobile layout, accessible workflow dialog, rounded 3D furniture edges and softer lighting.
+- Actual inference tested with the shipped DETR + SlimSAM assets on the existing bedroom reference and a generated living-room reference. Bedroom: bed, cabinet, low-confidence bench (the small desk). Living room: sofa, chair, table. Masks visually inspected; they contain real foreground contours, not rectangular crops. Partial silhouettes and occlusion remain limitations and require checking before processing.
+- Canonical COCO panoptic labels restored so cabinet/table classes do not appear as unknown labels. Quantized DETR mask output failed QA; only DETR class/box predictions are used, followed by full-precision SlimSAM masks.
+- Test runtime uses the same recognition/postprocessing modules with ONNX CPU on this Mac; browser inference uses WASM in a worker. Native inference took approximately 7 seconds for the bedroom and 32 seconds for the living-room reference during the last run. This is not a browser speed guarantee.
+- Recognition API test passed: upload actual masks, persist/reload candidates, select bed by description, reject empty/nonexistent selections, reject stale-photo results/foreign mask paths, preserve zero paid tasks and show the missing background-repair credential gate. The original 12 backend checks also passed.
+- TypeScript checks and production build passed. Model weights and browser runtime are served by this site's own static assets.
+- Browser automation was blocked by an unavailable administrator policy check, so screenshot, touch/drag and end-to-end browser inference QA remain unverified in this environment. No browser security workaround was used.
+- No World Labs, Tripo or fal.ai generation requests were submitted by this update. Hosted background repair still requires `FAL_KEY`; this update deliberately does not present it as working.

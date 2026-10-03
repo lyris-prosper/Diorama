@@ -20,7 +20,8 @@ export type Candidate = {
   box: number[];
   score: number;
   selected: boolean;
-  source: "sam3" | "manual";
+  source: "sam3" | "manual" | "local-detr";
+  needsReview?: boolean;
 };
 export type Task = {
   id: string;
@@ -42,6 +43,7 @@ export type Project = {
   branch: Branch;
   intent: string;
   candidates: Candidate[];
+  recognitionComplete?: boolean;
   items: Item[];
   archived?: Item[];
   tasks: Task[];

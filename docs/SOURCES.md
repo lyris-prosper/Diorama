@@ -21,3 +21,12 @@
 托管 SAM 3 / Bria 的“Commercial use”标识不等于模型权重统一采用 MIT。没有下载其模型权重或以开源许可证重新分发；使用须遵循 fal.ai 与模型供应商条款。服务调用费用与账户权限独立于 Tripo/World Labs。
 
 `resources/validation/` 是用户授权、使用提供的测试照片生成的真实验证资产，仅保存在本私有项目源仓库，未放入公开静态目录。示例床/书桌/柜子由本项目 Three.js 几何体创建，界面明确标为示例，不冒充生成结果。
+
+## 2026-10-03 automatic local recognition
+
+- Transformers.js 3.8.1: https://huggingface.co/docs/transformers.js/v3.8.1
+- DETR panoptic ONNX export: https://huggingface.co/Xenova/detr-resnet-50-panoptic ; pinned revision in `public/vision/models/detr/weights.json`. Only its detection head is used; quantized panoptic masks were rejected during QA.
+- Canonical COCO category names: https://github.com/cocodataset/panopticapi/blob/master/panoptic_coco_categories.json . Corrects unnamed cabinet/table merged classes in the upstream model config.
+- SlimSAM: https://huggingface.co/Xenova/slimsam-77-uniform . Full precision encoder and decoder produce furniture pixel masks; pinned revision in `public/vision/models/slimsam/revision.json`.
+- DETR, SlimSAM, Transformers.js: Apache-2.0. ONNX Runtime: MIT. Notices and licenses ship in `/vision/`.
+- Empty-state room artwork: original image generated for this workbench. It is labeled conceptual inspiration and never used as a user's reconstruction.

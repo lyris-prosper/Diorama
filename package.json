@@ -21,6 +21,7 @@
     "@base-ui/react": "^1.7.0",
     "@fal-ai/client": "^1.10.1",
     "@hookform/resolvers": "^5.7.1",
+    "@huggingface/transformers": "^3.8.1",
     "@shadcn/react": "^0.3.0",
     "@sparkjsdev/spark": "^2.3.1",
     "class-variance-authority": "0.7.1",

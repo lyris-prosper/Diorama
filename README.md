@@ -99,3 +99,22 @@ docs/                    验证、架构、第三方来源及限制
 - 未实现遮挡家具的生成式补全。严重残缺的裁切应返回重选或更换照片，不能认为准确建模。
 - 背景修复只保证掩膜外像素保留；掩膜内部生成内容、边缘残影、漏分或误分需检查。暂无自动语义残留检测。
 - 示例资产是几何模型，明确标注，与真实生成隔离。真实混合渲染和两条完整链路尚未验收。
+
+## 2026-10-03 UI and automatic recognition update
+
+Uploads now automatically start a dedicated browser worker. DETR identifies furniture and SlimSAM estimates pixel contours, without a `FAL_KEY` or inference API charge. Model weights and WASM runtime are bundled on the same site, so the browser does not depend on accessing Hugging Face or a CDN. The first run downloads about 106 MB of models/runtime; the large detector is cached locally. Slow devices may take longer and can cancel or retry.
+
+The upload still saves the image to the owner's private project storage. Only inference is local; this is not an offline-only uploader. Recognition results are saved as owner-scoped PNG masks and candidates, restoring after refresh. Nothing is selected for paid processing automatically. Click candidates or use a description, check the masks, and correct categories or add a manual outline as needed. Cabinets are explicitly marked for checking whether they are built in.
+
+Recognition is an estimate. Occlusion, small furniture, indistinct silhouettes and unusual furniture can produce missed objects or incomplete masks. The QA bedroom's small desk was classified as a low-confidence bench; the category correction control handles this. The model does not infer "by the window" reliably; the user must confirm the instance. No rectangle is substituted for a segmentation mask.
+
+Background repair and the subsequent editable-furniture workflow still require a server-side `FAL_KEY`; those controls explain the missing service and do not submit paid tasks. World Labs and Tripo bindings are unchanged. Do not put service keys into chat, browser code, or tracked files.
+
+Validation commands:
+
+- `npm run typecheck`
+- `node tests/recognition-smoke.mjs` — actual local inference on bedroom/living-room references, mask checks and reports in ignored `work/recognition/`.
+- `TEST_BASE_URL=http://127.0.0.1:4173 node tests/recognition-api.mjs` — persistence, ownership, stale-photo guards, selection and missing-provider handling against a local production worker without provider credentials.
+- `npm run build`
+
+Bundled models are already included. `scripts/prepare-vision.py` and `scripts/prepare-sam.py` document preparation; normal installation/build does not fetch models. Browser worker failures and cancellation preserve the uploaded photo and provide retry/manual selection.

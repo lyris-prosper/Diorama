@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
+import { recognizeFurniture } from "@/lib/recognition";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   Upload,
   Undo2,
@@ -99,12 +101,20 @@ export default function Workbench() {
     [quality, setQuality] = useState<number | null>(null),
     [floorOpen, setFloorOpen] = useState(false),
     [savedAt, setSavedAt] = useState("");
+  const [recognizing, setRecognizing] = useState(false);
+  const [recognitionMessage, setRecognitionMessage] = useState("");
+  const [recognitionPercent, setRecognitionPercent] = useState<number | undefined>();
+  const [recognitionError, setRecognitionError] = useState("");
+  const [imageRepair, setImageRepair] = useState<boolean | null>(null);
+  const recognitionAbort = useRef<AbortController | null>(null);
+  const attemptedPhoto = useRef("");
   const masksRef = useRef<Record<string, ImageData>>({});
   const fileRef = useRef<HTMLInputElement>(null),
     viewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(p);
   stateRef.current = p;
   useEffect(() => {
+    fetch("/api/workbench?capabilities=1").then(r=>r.json()).then((j:any)=>setImageRepair(!!j.imageRepair)).catch(()=>{});
     fetch("/api/workbench")
       .then(async (r) => {
         const j: any = await r.json();
@@ -194,6 +204,47 @@ export default function Workbench() {
         })
         .catch(() => {});
   }, [p?.candidates]);
+  async function autoRecognize(project: Project) {
+    if (!project.original) return;
+    recognitionAbort.current?.abort();
+    const controller = new AbortController();
+    recognitionAbort.current = controller;
+    setRecognizing(true); setRecognitionError(""); setRecognitionPercent(undefined);
+    setRecognitionMessage("正在准备家具识别");
+    try {
+      const response = await fetch(url(project.original), {signal:controller.signal});
+      if (!response.ok) throw Error("原图暂时无法读取，请重试。");
+      const results = await recognizeFurniture(await response.blob(), (message,percent)=>{
+        setRecognitionMessage(message); setRecognitionPercent(percent);
+      }, controller.signal);
+      setRecognitionMessage("正在保存家具轮廓"); setRecognitionPercent(undefined);
+      const candidates = [];
+      for (let i=0; i<results.length; i++) {
+        if (controller.signal.aborted) return;
+        const {mask,...candidate} = results[i];
+        const saved = await upload(project.id,"auto-mask-"+i,mask);
+        candidates.push({...candidate,mask:saved.key});
+      }
+      if (controller.signal.aborted) return;
+      const next = await api({action:"recognize",id:project.id,original:project.original,candidates});
+      if (controller.signal.aborted) return;
+      setP(next); setChoices(next.candidates.filter((c:Candidate)=>c.selected).map((c:Candidate)=>c.id));
+      setToast(candidates.length ? `已找到 ${candidates.length} 件候选家具，请核对轮廓。` : "未找到明确家具，可以手动圈选或按空房继续。");
+    } catch(e) {
+      if (!controller.signal.aborted) setRecognitionError((e as Error).message);
+    } finally {
+      if (recognitionAbort.current===controller) {
+        setRecognizing(false); recognitionAbort.current=null;
+      }
+    }
+  }
+  useEffect(()=>{
+    if (p?.mode === "real" && p.original && ["branch","confirm"].includes(p.stage) && !p.recognitionComplete && !p.candidates.length && attemptedPhoto.current!==p.original) {
+      attemptedPhoto.current=p.original;
+      void autoRecognize(p);
+    }
+  },[p?.id,p?.original]);
+  useEffect(()=>()=>recognitionAbort.current?.abort(),[]);
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -206,6 +257,8 @@ export default function Workbench() {
     }
   };
   async function create(mode: "real" | "demo") {
+    recognitionAbort.current?.abort();
+    setRecognitionError(""); setBranch("edit"); setIntent("");
     const next = await api({ action: "create", mode });
     setP(next);
     setHistory([]);
@@ -311,8 +364,8 @@ export default function Workbench() {
   );
   async function detect() {
     if (!p) return;
-    const next = await api({ action: "detect", id: p.id, branch, intent });
-    setChoices([]);
+    const next = await api({ action: "select-candidates", id: p.id, branch, intent, selected: choices });
+    setChoices(next.candidates.filter((c:Candidate)=>c.selected).map((c:Candidate)=>c.id));
     setP(next);
   }
   async function addManual() {
@@ -320,8 +373,7 @@ export default function Workbench() {
     const image = await loadImage(url(p.original));
     const c = canvas(image.width, image.height),
       cx = c.getContext("2d")!;
-    cx.fillStyle = "black";
-    cx.fillRect(0, 0, c.width, c.height);
+    cx.clearRect(0, 0, c.width, c.height);
     cx.fillStyle = "white";
     cx.beginPath();
     points.forEach(([x, y], i) =>
@@ -347,6 +399,7 @@ export default function Workbench() {
   }
   async function prepare() {
     if (!p?.original) return;
+    if (imageRepair === false) throw Error("家具识别和选择已保留。背景修复服务还未连接，暂时无法移除家具；没有消耗生成积分。");
     const selected = p.candidates.filter((c) => choices.includes(c.id));
     if (!selected.length) throw Error("请勾选本次要处理的家具。");
     const r = await prepareImages(p.original, selected);
@@ -456,7 +509,7 @@ export default function Workbench() {
           <button
             className="button ghost"
             onClick={() => fileRef.current?.click()}
-            disabled={busy}
+            disabled={busy || recognizing}
           >
             <Upload size={16} />
             {p ? "更换房间" : "上传照片"}
@@ -501,15 +554,16 @@ export default function Workbench() {
             <span>原始照片 · 空间尚未生成</span>
           </div>
         ) : null}
+        {!p && <figure className="room-art"><img src="/room-atmosphere.webp" alt="暖阳下的室内设计概念模型" /><figcaption>光、材质，与家的可能。<span>空间灵感 · 非照片生成结果</span></figcaption></figure>}
         <div className="workspace-label">
           <span className="eyebrow">ROOM WORKSPACE</span>
-          <h1>{p ? p.name : "从你的房间开始"}</h1>
+          <h1>{p ? p.name : "给房间，留一点想象"}</h1>
           {p?.mode === "demo" ? (
             <p>示例几何模型 · 不代表照片生成结果</p>
           ) : p?.room ? (
             <p>生成式空间 · 隐藏区域为推测补全</p>
           ) : (
-            <p>一张照片，开始整理与摆放。</p>
+            <p>把熟悉的角落，慢慢变成喜欢的样子。</p>
           )}
         </div>
         {!p && !boot && (
@@ -527,11 +581,11 @@ export default function Workbench() {
                 <Plus size={15} />
               </span>
             </div>
-            <h2>放入一张房间照片</h2>
+            <h2>从一张照片开始</h2>
             <p>
               有家具的房间，或一个空房间，都可以。
               <br />
-              选择要移除或编辑的家具，再进入你的空间。
+              上传后自动识别家具，再由你决定如何调整。
             </p>
             <button
               className="button primary large"
@@ -553,7 +607,7 @@ export default function Workbench() {
                 })
               }
             >
-              先体验示例房间 <Box size={15} />
+              探索 3D 示例房间 <Box size={15} />
             </button>
             <span className="demo-caption">
               仅体验摆放与编辑，不调用生成服务
@@ -956,18 +1010,13 @@ export default function Workbench() {
           {toast}
         </div>
       )}
-      {drawer && p && (
-        <div className="overlay">
-          <section
-            className="workflow"
-            role="dialog"
-            aria-modal="true"
-            aria-label="照片处理"
-          >
+      {p && (
+        <Dialog open={drawer} onOpenChange={setDrawer}>
+          <DialogContent className="workflow" showCloseButton={false} aria-describedby={undefined}>
             <div className="workflow-top">
               <div>
                 <span className="eyebrow">YOUR ROOM, YOUR CHOICE</span>
-                <h2>
+                <DialogTitle>
                   {p.mode === "demo"
                     ? "示例房间"
                     : p.stage === "branch" || p.stage === "upload"
@@ -977,7 +1026,7 @@ export default function Workbench() {
                         : p.stage === "review"
                           ? "看看处理后的房间"
                           : "空间正在准备中"}
-                </h2>
+                </DialogTitle>
               </div>
               <button
                 className="icon"
@@ -1102,6 +1151,13 @@ export default function Workbench() {
                             }
                           />
                         ))}
+                      {!manual && ["branch","confirm","detecting"].includes(p.stage) && p.candidates.filter(c=>c.source==="local-detr").map((c,i)=>(
+                        <button key={c.id} className={"object-pin "+(choices.includes(c.id)?"chosen":"")}
+                          style={{left:`${Math.min(83,c.box[0]*100)}%`,top:`${Math.max(2,c.box[1]*100)}%`}}
+                          onClick={e=>{e.stopPropagation();setChoices(v=>v.includes(c.id)?v.filter(id=>id!==c.id):[...v,c.id]);}}
+                          aria-pressed={choices.includes(c.id)} aria-label={"选择"+c.name}>{i+1} · {c.name}</button>
+                      ))}
+                      {recognizing && <div className="recognition-veil"><Scan size={25}/><span>正在识别家具</span></div>}
                       {manual && (
                         <svg viewBox="0 0 100 100" preserveAspectRatio="none">
                           <polygon
@@ -1144,6 +1200,15 @@ export default function Workbench() {
                     )}
                   </div>
                   <div className="flow-controls">
+                    {["branch","confirm","detecting"].includes(p.stage) && <div className="recognition-status" role="status" aria-live="polite">
+                      <div className="recognition-heading">{recognizing ? <Loader2 className="spin" size={18}/> : recognitionError ? <AlertCircle size={18}/> : <Scan size={18}/>}
+                        <strong>{recognizing ? recognitionMessage : recognitionError ? "识别暂未完成" : p.recognitionComplete ? `已找到 ${p.candidates.length} 件候选家具` : "自动识别家具"}</strong>
+                      </div>
+                      {recognizing && recognitionPercent!==undefined && <progress max={100} value={recognitionPercent} aria-label="模型下载进度"/>}
+                      <p>{recognitionError || (recognizing ? "照片在你的设备上识别，请稍候。" : "点击照片标记或下方名称选择。请检查轮廓；柜子还需确认是否为嵌入式。")}</p>
+                      {recognizing ? <button className="text-button" onClick={()=>{recognitionAbort.current?.abort();setRecognitionError("识别已取消，可以重试或手动圈选。");}}>取消识别</button> : <button className="text-button" disabled={busy||running} onClick={()=>void autoRecognize(p)}>重新自动识别</button>}
+                    </div>}
+
                     {["branch", "upload"].includes(p.stage) && (
                       <>
                         <h3>是否要移除屋内家具？</h3>
@@ -1173,6 +1238,11 @@ export default function Workbench() {
                             <p>转换为独立模型，稍后由你放回房间。</p>
                           </div>
                         </button>
+                        {!!p.candidates.length && <div className="detected-chips" aria-label="识别出的家具">{p.candidates.map(c=>(
+                          <button key={c.id} className={choices.includes(c.id)?"chosen":""} aria-pressed={choices.includes(c.id)} onClick={()=>setChoices(v=>v.includes(c.id)?v.filter(id=>id!==c.id):[...v,c.id])}>
+                            {choices.includes(c.id)?<Check size={14}/>:<Plus size={14}/>} {c.name}
+                          </button>
+                        ))}</div>}
                         <label className="field-label" htmlFor="intent">
                           {branch === "remove"
                             ? "你想移除哪些家具？"
@@ -1194,7 +1264,7 @@ export default function Workbench() {
                         </p>
                         <button
                           className="button primary full"
-                          disabled={busy || !intent.trim()}
+                          disabled={busy || recognizing || (!intent.trim() && !choices.length)}
                           onClick={() => run(detect)}
                         >
                           {busy ? (
@@ -1202,7 +1272,7 @@ export default function Workbench() {
                           ) : (
                             <Scan size={16} />
                           )}
-                          识别并确认家具
+                          查看并确认选择
                         </button>
                         <button
                           className="text-button full"
@@ -1243,7 +1313,7 @@ export default function Workbench() {
                         <div className="skip-actions">
                           <button
                             className="text-button"
-                            disabled={busy}
+                            disabled={busy || recognizing}
                             onClick={() => run(() => generate(true))}
                           >
                             这是空房／没有需要处理的家具
@@ -1251,7 +1321,7 @@ export default function Workbench() {
                           {branch === "edit" && (
                             <button
                               className="text-button"
-                              disabled={busy}
+                              disabled={busy || recognizing}
                               onClick={() => run(() => generate(true))}
                             >
                               暂不编辑家具，仅生成空间
@@ -1265,6 +1335,7 @@ export default function Workbench() {
                     )}
                     {["detecting", "confirm"].includes(p.stage) && (
                       <>
+                        <button className="text-button" disabled={busy||running||recognizing} onClick={()=>setP({...p,stage:"branch"})}><ChevronLeft size={15}/> 调整处理方式</button>
                         <h3>{running ? "正在查找家具" : "请确认具体对象"}</h3>
                         <p className="muted">
                           {p.branch === "remove"
@@ -1309,9 +1380,10 @@ export default function Workbench() {
                           </div>
                         )}
                         {p.candidates.map((c) => (
-                          <label className="candidate" key={c.id}>
+                          <div className="candidate" key={c.id}>
                             <input
                               type="checkbox"
+                              aria-label={"本次处理"+c.name}
                               checked={choices.includes(c.id)}
                               onChange={() =>
                                 setChoices((v) =>
@@ -1336,19 +1408,28 @@ export default function Workbench() {
                                   ? "手动轮廓 · 请检查完整性"
                                   : c.score < 0.7
                                     ? "识别不确定 · 请仔细确认"
-                                    : "候选实例 · 请核对照片"}
+                                    : c.source === "local-detr"
+                                      ? `自动识别 · ${Math.round(c.score*100)}%${c.needsReview ? (c.kind === "cabinet" ? " · 请确认可移动" : " · 轮廓需检查") : " · 请核对轮廓"}`
+                                      : "候选实例 · 请核对照片"}
                               </span>
                             </div>
-                          </label>
+                            <select className="candidate-kind" aria-label={"修正"+c.name+"类别"} value={c.kind} disabled={busy||recognizing||running} onChange={e=>{
+                              const kind=e.target.value;
+                              void run(async()=>setP(await api({action:"correct-candidate",id:p.id,candidate:c.id,kind})));
+                            }}>
+                              <option value="bed">床</option><option value="desk">桌子</option><option value="cabinet">柜子</option><option value="chair">椅子／凳</option><option value="sofa">沙发</option>
+                            </select>
+                          </div>
                         ))}
                         {p.candidates.length > 1 && (
                           <p className="small muted">
                             名称相同也可能是不同实例；“窗边”等方位需在图中核对。
                           </p>
                         )}
+                        {imageRepair===false && <div className="notice">家具已识别，可以选择和补充轮廓。背景修复服务尚未连接，移除家具和转为独立模型暂不可用；尚未消耗生成积分。</div>}
                         <button
                           className="button primary full"
-                          disabled={busy || running || !choices.length}
+                          disabled={busy || recognizing || running || !choices.length || imageRepair===false}
                           onClick={() => run(prepare)}
                         >
                           {busy ? (
@@ -1403,10 +1484,10 @@ export default function Workbench() {
                         />
                         <button
                           className="text-button full"
-                          disabled={busy || running || !intent.trim()}
+                          disabled={busy || recognizing || running || !intent.trim()}
                           onClick={() => run(detect)}
                         >
-                          重新检测
+                          按描述更新选择
                         </button>
                       </>
                     )}
@@ -1563,8 +1644,8 @@ export default function Workbench() {
                 </div>
               </>
             )}
-          </section>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
       {showServices && (
         <div className="overlay">
@@ -1603,14 +1684,13 @@ export default function Workbench() {
                   </span>
                 </div>
                 <div className="service-row">
-                  <strong>图片识别与修复</strong>
+                  <strong>背景修复</strong>
                   <span>
                     {services.image ? "已配置 fal.ai" : "待配置 FAL_KEY"}
                   </span>
                 </div>
                 <p className="muted">
-                  后台使用 SAM 3 生成像素掩膜，Bria Eraser
-                  修复背景。密钥只保存在服务端环境中。
+                  自动识别已在浏览器内运行，无需密钥。背景修复使用 Bria Eraser，需要配置后端服务。
                 </p>
                 <p className="small muted">
                   本轮 Tripo 上限 5,000 积分。示例房间不消耗生成积分。

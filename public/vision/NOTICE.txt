@@ -1,0 +1,8 @@
+DETR ResNet-50 Panoptic by Meta / Facebook Research, Apache-2.0. ONNX q8 export by Xenova, revision ea24b2d4e0bfae31f0a1299ba3fb892a2df064de.
+Transformers.js 3.8.1, Apache-2.0. ONNX Runtime Web, MIT.
+https://huggingface.co/Xenova/detr-resnet-50-panoptic
+https://github.com/facebookresearch/detr
+SlimSAM by the authors of SlimSAM and Meta SAM, Apache-2.0; ONNX export by Xenova.
+https://huggingface.co/Xenova/slimsam-77-uniform
+https://github.com/czg1225/SlimSAM
+The COCO category labels in the DETR configuration are corrected using the canonical panopticapi categories. DETR is used for detection; SlimSAM for masks.

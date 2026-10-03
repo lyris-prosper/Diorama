@@ -6,6 +6,7 @@ export async function GET(req: Request) {
   try {
     const user = owner(req);
     const q = new URL(req.url).searchParams;
+    if (q.has("capabilities")) return Response.json({ localRecognition: true, imageRepair: !!(bindings().secrets.FAL_KEY || process.env.FAL_KEY) });
     if (q.has("services")) return Response.json(await balances());
     if (q.has("id")) return Response.json(await getProject(q.get("id")!, user));
     const row = await bindings()
@@ -116,6 +117,57 @@ export async function POST(req: Request) {
           confirmed: !!b.floor.confirmed,
         };
       return Response.json(await saveProject(p, user));
+    }
+    if (b.action === "recognize") {
+      if (p.mode !== "real" || !p.original || b.original !== p.original)
+        throw Error("照片已更换，请重新识别。");
+      if (!["branch", "confirm", "detecting"].includes(p.stage) || p.tasks.some(t => ["running", "queued", "submitting"].includes(t.status)))
+        throw Error("当前空间正在处理中，请等待处理完成。");
+      if (!Array.isArray(b.candidates) || b.candidates.length > 15)
+        throw Error("识别结果格式有误。");
+      const candidates = [];
+      for (const c of b.candidates) {
+        if (!["bed", "desk", "chair", "sofa", "cabinet"].includes(c.kind) ||
+            typeof c.name !== "string" || !Number.isFinite(c.score) || c.score < 0 || c.score > 1 ||
+            !Array.isArray(c.box) || c.box.length !== 4 || c.box.some((v: unknown) => typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1) ||
+            c.box[0] >= c.box[2] || c.box[1] >= c.box[3] ||
+            typeof c.mask !== "string" || !c.mask.startsWith(p.id + "/uploads/auto-mask-"))
+          throw Error("识别轮廓无效，请重新识别。");
+        if (!(await bindings().bucket.head(c.mask))) throw Error("识别轮廓未保存，请重试。");
+        candidates.push({id:crypto.randomUUID(), name:c.name.slice(0,30), kind:c.kind, mask:c.mask,
+          box:c.box, score:c.score, selected:false, source:"local-detr" as const, needsReview:!!c.needsReview || c.kind === "cabinet"});
+      }
+      p.candidates = [...p.candidates.filter(c => c.source === "manual"), ...candidates];
+      p.recognitionComplete = true;
+      if (p.stage === "detecting") p.stage = "branch";
+      return Response.json(await saveProject(p,user));
+    }
+    if (b.action === "correct-candidate") {
+      if (!["branch","confirm"].includes(p.stage)) throw Error("当前阶段不能修改识别结果。");
+      const names: Record<string,string> = {bed:"床",desk:"桌子",cabinet:"柜子",chair:"椅子",sofa:"沙发"};
+      const candidate=p.candidates.find(c=>c.id===b.candidate);
+      if (!candidate || !names[b.kind]) throw Error("请选择有效家具类别。");
+      candidate.kind=b.kind; candidate.name=names[b.kind]; candidate.needsReview=b.kind==="cabinet";
+      return Response.json(await saveProject(p,user));
+    }
+    if (b.action === "select-candidates") {
+      if (p.mode !== "real" || !["branch", "confirm"].includes(p.stage)) throw Error("请先上传并识别照片。");
+      if (!["remove", "edit"].includes(b.branch)) throw Error("请选择处理方式。");
+      const ids = Array.isArray(b.selected) ? b.selected : [];
+      const intent = String(b.intent || "").trim().slice(0,500);
+      let selected = p.candidates.filter(c => ids.includes(c.id));
+      if (!selected.length && intent) {
+        const kinds = parseIntent(intent).map(c=>c.kind);
+        selected = p.candidates.filter(c=>kinds.includes(c.kind));
+        // Relative directions can narrow candidates, but do not imply spatial certainty.
+        if (/左|left/i.test(intent)) selected=selected.filter(c=>c.source!=="local-detr" || (c.box[0]+c.box[2])/2 < 0.5);
+        if (/右|right/i.test(intent)) selected=selected.filter(c=>c.source!=="local-detr" || (c.box[0]+c.box[2])/2 >= 0.5);
+      }
+      if (!selected.length) throw Error(intent ? "没有找到对应家具，可以点击照片中的轮廓，或补充手动圈选。" : "请选择具体家具，或填写描述；空输入不会处理全部家具。");
+      p.branch=b.branch; p.intent=intent;
+      p.candidates=p.candidates.map(c=>({...c, selected:selected.some(v=>v.id===c.id)}));
+      p.stage="confirm";
+      return Response.json(await saveProject(p,user));
     }
     if (b.action === "detect") {
       if (p.mode === "demo") throw Error("示例模式不进行图片识别。");

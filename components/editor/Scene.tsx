@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Item, Project } from "@/lib/types";
 const asset = (key: string) =>
@@ -13,10 +14,10 @@ function box(
   color: string,
   radius = 0,
 ) {
-  const geo = new THREE.BoxGeometry(...(size as [number, number, number]));
+  const geo = new RoundedBoxGeometry(size[0],size[1],size[2],3, radius || Math.min(...size)*0.16);
   const m = new THREE.Mesh(
     geo,
-    new THREE.MeshStandardMaterial({ color, roughness: 0.85 }),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.68 }),
   );
   m.position.set(...(pos as [number, number, number]));
   m.castShadow = true;
@@ -112,18 +113,18 @@ export default function Scene(props: Props) {
     const el = host.current;
     let disposed = false;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#eeeae2");
+    scene.background = new THREE.Color("#e9ede5");
     const camera = new THREE.PerspectiveCamera(43, 1, 0.05, 150);
     camera.position.set(7.2, 6.1, 8.5);
     const renderer = new THREE.WebGLRenderer({
-      antialias: false,
+      antialias: true,
       preserveDrawingBuffer: true,
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.05;
     el.appendChild(renderer.domElement);
     renderer.domElement.setAttribute("aria-label", "房间三维画布");
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -138,13 +139,18 @@ export default function Scene(props: Props) {
     const sun = new THREE.DirectionalLight("#fff8eb", 3.5);
     sun.position.set(-2, 7, 4);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.radius = 4;
+    sun.shadow.normalBias = 0.025;
     sun.shadow.camera.left = -8;
     sun.shadow.camera.right = 8;
     sun.shadow.camera.top = 8;
     sun.shadow.camera.bottom = -8;
     sun.shadow.bias = -0.001;
     scene.add(sun);
+    const fill = new THREE.DirectionalLight("#e6efdf", 1);
+    fill.position.set(5, 3, -4);
+    scene.add(fill);
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       new THREE.MeshBasicMaterial({
@@ -354,6 +360,7 @@ export default function Scene(props: Props) {
     resize();
     function thumb(id: string, g: THREE.Group) {
       const ts = new THREE.Scene();
+      ts.background = new THREE.Color("#f3f2ea");
       const clone = g.clone(true);
       clone.visible = true;
       clone.position.set(0, 0, 0);
@@ -373,7 +380,7 @@ export default function Scene(props: Props) {
       cam.lookAt(c);
       const old = renderer.getSize(new THREE.Vector2());
       renderer.setSize(260, 260, false);
-      renderer.setClearColor("#f4f1eb", 1);
+      renderer.setClearColor("#f3f2ea", 1);
       renderer.render(ts, cam);
       live.current.onThumb(id, renderer.domElement.toDataURL("image/png"));
       renderer.setSize(old.x, old.y, false);

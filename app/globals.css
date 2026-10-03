@@ -1463,3 +1463,116 @@ summary {
   line-height: 1.7;
   padding: 5px;
 }
+
+/* A quiet architectural studio: warm paper, sage lacquer, soft daylight. */
+:root { --paper:#f7f5f0; --surface:#fffefb; --ink:#38443e; --muted:#687269; --line:#dedfd5; --accent:#526d5c; --accent-light:#e8eee4; --shadow:0 16px 52px #374c3b17; }
+body { font-size:16px; }
+.topbar { height:80px; padding:0 36px; background:#faf9f5; border-bottom:1px solid #dcdfd4; }
+.title-block strong { font-weight:600; font-size:16px; }
+.title-block .space-label { color:#6f796f; }
+.button { border-radius:12px; padding:12px 20px; box-shadow:inset 0 1px #ffffff80; }
+.button.primary { background:linear-gradient(150deg,#6c846c,#4f6a58); border-color:#566f5b; box-shadow:inset 0 1px #ffffff30,0 5px 12px #465c4620; }
+.button.primary:hover:not(:disabled) { background:#435f4e; transform:translateY(-1px); }
+.icon { border-radius:10px; width:36px; height:36px; }
+.workspace { height:calc(100dvh - 80px); background:#e9ede5; }
+.empty-workspace { background:#f0f1e9; }
+.empty-workspace:after { display:none; }
+.workspace-label { left:42px; top:34px; }
+.eyebrow { font-size:12px; letter-spacing:.18em; color:#6f7d70; }
+.workspace-label h1 { font-family:"Songti SC","Noto Serif SC",serif; font-size:30px; font-weight:500; letter-spacing:.05em; }
+.workspace-label p { font-size:14px; color:#687568; line-height:1.7; }
+.room-art { position:absolute; inset:0 0 0 28%; margin:0; }
+.room-art img { width:100%; height:100%; object-fit:cover; object-position:center; }
+.room-art:after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,#f0f1e9 0%,#f0f1e988 12%,transparent 32%),linear-gradient(0deg,#e8ece4 0%,transparent 20%); pointer-events:none; }
+.room-art figcaption { position:absolute; bottom:74px; right:48px; z-index:1; font-family:"Songti SC",serif; font-size:18px; color:#536152; text-align:right; }
+.room-art figcaption span { display:block; font-family:inherit; font-size:12px; margin-top:8px; color:#6c7868; }
+.empty-card { left:42px; top:52%; transform:translateY(-45%); width:350px; text-align:left; padding:28px; border:1px solid #ffffffd9; border-radius:24px; background:#fffefaed; box-shadow:0 28px 60px #4c5b4420,inset 0 1px white; backdrop-filter:blur(10px); }
+.upload-symbol { margin:0 0 24px; width:54px; height:54px; border-radius:16px; background:#eef1e8; }
+.empty-card h2 { font-family:"Songti SC",serif; font-size:25px; letter-spacing:.03em; }
+.empty-card p { font-size:15px; color:#626e60; line-height:1.9; margin-bottom:22px; }
+.empty-card .button.large { width:100%; padding:14px 20px; }
+.file-hint,.demo-caption { font-size:12px; color:#727b70; line-height:1.7; }
+.empty-card .text-button { font-size:14px; }
+.empty-divider { margin:22px 0 12px; background:#e3e6dc; }
+.canvas-toolbar { top:auto; bottom:32px; border-radius:16px; padding:7px; box-shadow:0 12px 35px #344d3c18; }
+.tool { min-height:38px; font-size:14px; border-radius:10px; }
+.shelf { border-radius:22px; background:#fffefaeb; border:1px solid #fff; box-shadow:0 16px 50px #374c3b13; }
+.furniture-card { border-radius:15px; }
+.shelf-heading h2 { font-family:"Songti SC",serif; font-size:20px; }
+.shelf-note,.furniture-info span,.workspace-footer,.workspace-footer .text-button,.reference-label { font-size:12px; }
+.inspector { bottom:98px; border-radius:18px; }
+.inspector-title strong,.inspector-row label,.value,.secondary span { font-size:14px; }
+.inspector-title > span { font-size:12px; }
+.photo-stage { opacity:1; inset:125px 10% 125px; }
+.photo-stage img { border-radius:16px; border:8px solid #fffcf6; box-shadow:0 20px 70px #43593c20; }
+.overlay { inset:80px 0 0; background:#26392d2b; backdrop-filter:blur(12px); }
+.workflow { width:1160px; border-radius:24px; background:#fcfbf7; box-shadow:0 35px 100px #293a332e; }
+.workflow-top h2 { font-family:"Songti SC",serif; font-size:27px; }
+.workflow-top { padding:28px 32px 20px; }
+.steps { background:#eef1e8; }
+.steps span { font-size:14px; }
+.photo-confirm { border-radius:16px; box-shadow:0 12px 30px #3b463512; }
+.flow-controls h3 { font-size:20px; }
+.branch-option { border-radius:14px; padding:16px; }
+.branch-option p,.muted,.notice { font-size:14px; line-height:1.8; }
+.field-label,.text-button,.candidate strong { font-size:14px; }
+.small,.candidate span,.photo-caption,.skip-actions span { font-size:12px; line-height:1.7; }
+.candidate { border-radius:13px; padding:12px; }
+.error-banner,.toast { border-radius:14px; font-size:14px; }
+@media(max-width:1000px) {
+ .topbar { padding:0 20px; } .save-status { display:none; }
+ .empty-card { left:28px; width:325px; } .workspace-label { left:28px; }
+ .room-art { left:22%; } .canvas-toolbar { left:40%; }
+}
+@media(max-width:700px) {
+ .workbench { min-height:100dvh; height:auto; overflow:visible; }
+ .topbar { height:70px; padding:0 14px; gap:8px; } .title-block { gap:7px; }
+ .title-block .space-label,.title-block .slash,.top-actions .divider,.top-actions>.icon { display:none; }
+ .title-block strong { font-size:14px; white-space:nowrap; } .top-actions { gap:6px; }
+ .top-actions .button { padding:9px 10px; font-size:12px; gap:5px; } .top-actions .button svg { width:14px; }
+ .workspace { height:calc(100dvh - 70px); min-height:720px; } .workspace-label { top:22px; left:22px; }
+ .workspace-label h1 { font-size:26px; } .workspace-label p { max-width:280px; }
+ .room-art { inset:86px -50px auto 0; height:370px; } .room-art:after { background:linear-gradient(0deg,#f0f1e9,transparent 50%); }
+ .room-art figcaption { display:none; }
+ .empty-card { top:385px; left:18px; width:calc(100% - 36px); transform:none; padding:23px; border-radius:22px; }
+ .upload-symbol { display:none; } .empty-card h2 { font-size:23px; margin-bottom:9px; }
+ .empty-card p { font-size:14px; margin-bottom:17px; } .empty-divider { margin:15px 0 8px; }
+ .empty-card .demo-caption { display:none; } .workspace-footer { display:none; }
+ .overlay { inset:70px 0 0; padding:8px; } .workflow { border-radius:20px; }
+ .workflow-top { padding:20px; } .workflow-top h2 { font-size:23px; }
+ .workflow-body { display:flex; flex-direction:column; padding:16px; gap:18px; }
+ .flow-controls { width:100%; } .photo-column { width:100%; } .steps span { font-size:12px; }
+ .canvas-toolbar { left:12px; right:12px; bottom:18px; transform:none; justify-content:center; }
+ .canvas-toolbar .tool { font-size:12px; gap:5px; padding:6px; }
+ .inspector { width:calc(100% - 24px); bottom:80px; }
+ .error-banner { width:calc(100% - 24px); bottom:20px; }
+}
+
+/* Photo recognition and accessible workflow dialog. */
+[data-slot="dialog-overlay"] { position:fixed; inset:0; z-index:20; background:#26392d45; backdrop-filter:blur(10px); }
+[data-slot="dialog-content"].workflow { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:21; max-width:calc(100% - 40px); max-height:calc(100dvh - 48px); display:block; padding:0; outline:none; }
+.workflow-top [data-slot="dialog-title"] { font-family:"Songti SC",serif; font-size:27px; font-weight:500; margin-top:7px; }
+.mask-overlay,.candidate-mask { mask-mode:luminance; }
+.mask-overlay { background:#f1e5ba60; }
+.mask-overlay.checked { background:#8dba85a6; }
+.object-pin { position:absolute; z-index:3; color:#fff; background:#465b48; border:1px solid #ffffffa0; box-shadow:0 3px 14px #18261730; padding:6px 9px; border-radius:8px; font-size:12px; white-space:nowrap; }
+.object-pin.chosen,.object-pin:hover:not(:disabled) { background:#2d553a; outline:2px solid #dceec6; }
+.recognition-status { border:1px solid #d9e2d0; border-radius:14px; background:#eef3e9; padding:14px 16px; margin-bottom:22px; }
+.recognition-heading { display:flex; align-items:center; gap:8px; color:#47634f; }
+.recognition-heading strong { font-size:14px; font-weight:600; }
+.recognition-status p { color:#687364; font-size:12px; line-height:1.75; margin-top:6px; }
+.recognition-status .text-button { font-size:12px; padding:4px 0 0; }
+.recognition-status progress { width:100%; height:5px; margin-top:12px; accent-color:#58755c; }
+.recognition-veil { position:absolute; inset:0; background:#f1f6e442; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; color:#254331; pointer-events:none; text-shadow:0 1px 8px #fff; }
+.recognition-veil span { background:#fafff0ee; padding:8px 13px; border-radius:20px; font-size:14px; }
+.detected-chips { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0; }
+.detected-chips button { border:1px solid #d3dbc9; border-radius:30px; padding:8px 12px; font-size:14px; display:flex; align-items:center; gap:4px; background:#fffef8; }
+.detected-chips button.chosen { color:#335a3d; background:#e0ecd7; border-color:#8da382; }
+@media(max-width:700px) {
+ [data-slot="dialog-content"].workflow { max-width:calc(100% - 16px); max-height:calc(100dvh - 24px); }
+ .workflow-top [data-slot="dialog-title"] { font-size:23px; }
+ .object-pin { font-size:11px; padding:5px; }
+}
+
+.candidate-kind { margin-left:auto; max-width:90px; padding:6px; border:1px solid var(--line); border-radius:8px; background:#fffefa; font-size:12px; }
+.candidate>div:not(.candidate-mask) { min-width:0; }

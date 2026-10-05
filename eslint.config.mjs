@@ -14,8 +14,13 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
-    // Plain <img>: the app runs on a local dev server without next/image optimisation.
-    rules: { "@next/next/no-img-element": "off" },
+    rules: {
+      // Plain <img>: the app runs on a local dev server without next/image optimisation.
+      "@next/next/no-img-element": "off",
+      // Request bodies, D1 rows and provider responses arrive as untyped JSON and are checked
+      // field by field where they are used; they stay visible as warnings rather than errors.
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
   },
   {
     files: ["components/ui/**/*.{ts,tsx}"],

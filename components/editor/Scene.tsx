@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
@@ -237,8 +237,11 @@ function detectFloorFromSplats(splat: THREE.Object3D & { forEachSplat?: (visit: 
 }
 export default function Scene(props: Props) {
   const host = useRef<HTMLDivElement>(null);
+  // The latest props for event handlers and effects, updated before any effect of the same render runs.
   const live = useRef(props);
-  live.current = props;
+  useLayoutEffect(() => {
+    live.current = props;
+  });
   const engine = useRef<any>(null);
   useEffect(() => {
     if (!host.current) return;

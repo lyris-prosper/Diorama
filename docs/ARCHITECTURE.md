@@ -1,22 +1,62 @@
-# 架构与替换点
+# 结构
 
-前端 React 19 / TypeScript，命令式 Three.js 0.186.1，Spark 2.3.1。选择 Three.js 直接管理一个 renderer，避免每张家具卡建立独立 WebGL 上下文；R3F/Drei 并非必需，未为技术名堆叠依赖。
+## 运行方式
 
-后端 Cloudflare Worker：`/api/workbench` 处理项目、任务、上传和布局；`/api/assets` 基于项目所有者检查返回 R2 流。D1 使用预编译 SQL，迁移由 Drizzle 生成。
+工作台只在本机运行：`npm start` 启动 Vite 开发服务器（vinext 提供 Next 风格的 `app/` 路由），服务端代码跑在 Cloudflare 的本地 Worker 运行时里（Miniflare）。
 
-模型替换接口集中在 `lib/server/providers.ts`：
+- **数据库**：D1（SQLite），一张 `projects` 表存每个空间的 JSON；`jobs` 和 `job_charges` 记录付费任务与扣费。迁移在 `drizzle/*.sql`，启动时由 wrangler 应用。
+- **文件**：R2（本地模拟），存照片、掩膜、修复结果、房间 `.spz`、家具 `.glb`。键名以空间 id 开头；通过照片指纹复用的房间文件保留在最早生成它的空间目录下，读取权限按“文件在自己的空间里，或被自己的空间引用”判断（`app/api/assets/route.ts`）。
+- **数据位置**：`.wrangler/state/`。`vite.config.ts` 里的数据库 id 和存储桶名决定数据在哪里，不能改。
+- **本机辅助服务**：开发服务器里只允许本机访问的中间件。
+  - `build/local-vision-plugin.mjs`：识别和背景修复，在独立子进程里运行，有内存门槛和超时。
+  - `build/local-model-plugin.mjs`：压缩生成的 GLB。
+  - `build/local-relay-plugin.mjs`：把 World Labs 和 Tripo 请求经系统代理转发，因为 Worker 运行时不能直接用 HTTP 代理。
 
-| 能力 | 选定实现 | 资源/凭据 | 已验证范围 |
-|---|---|---|---|
-| 意图 | 中英文类别规则；同类歧义人工确认 | 无模型、无 GPU | 空输入和未支持类别的后端门控 |
-| 实例检测与分割 | fal.ai `fal-ai/sam-3/image` | `FAL_KEY`；GPU 由服务商管理 | 官方 schema 核对，未真实调用 |
-| 手动修正 | 多边形→Canvas 像素掩膜 | 浏览器 Canvas | 实现，未浏览器验收 |
-| 单件图 | 掩膜逐像素抠图→18% 留白→1024 PNG，另存原始裁切 | 浏览器内存 | 实现，未浏览器验收 |
-| 背景修复 | fal.ai `fal-ai/bria/eraser` + 掩膜外原图回填 | `FAL_KEY` | 官方 schema 核对，未真实调用 |
-| 空间 | World Labs `marble-1.0-draft` | `WORLDLABS_API_KEY` | 一张原图真实成功，230 积分 |
-| 家具 | Tripo v3 `v3.1-20260211` | `TRIPO_API_KEY` | 余额查询成功；生成未实测 |
-| 质检 | 分割置信度提示、空掩膜拒绝、未选像素差异、人工复核 | 浏览器/用户 | 未完成自动语义质检 |
+## 流程
 
-不用模型仓库假冒在线 API，也不把 PyTorch / CUDA 安装进 128MB Worker。Grounding DINO / SAM 本地部署需要单独 GPU 服务，故本次选用托管 SAM 3。未来可替换 providers.ts，不应更改互斥分支语义和预算逻辑。
+| 环节 | 实现 | 文件 |
+|---|---|---|
+| 识别家具 | DETR（检测）+ SlimSAM（像素轮廓），ONNX Runtime 在 Node 子进程里运行 | `scripts/local-vision-worker.mjs`、`public/vision/inference.mjs` |
+| 手动修正 | 多边形 → Canvas 掩膜 | `components/editor/Workbench.tsx` |
+| 抠图 | 掩膜逐像素抠出透明 PNG | `lib/image.ts` |
+| 背景修复 | LaMa，只修家具周围裁出的区域，保持原分辨率，羽化贴回 | `scripts/local-vision-worker.mjs` |
+| 3D 房间 | World Labs Marble 草稿生成；或导入 Marble 官网的房间 | `lib/server/providers.ts`、`app/api/workbench/route.ts` |
+| 同照片复用 | 64 位差异哈希，汉明距离 ≤ 8 视为同一张照片 | `set-print` |
+| 地面与比例 | 从碰撞网格或 splat 点云找地面和天花板，换算成米 | `components/editor/Scene.tsx` |
+| 擦除原家具 | 擦除框隐藏框内的 splat；空房间底图只在框内显示，自动对齐（平面图 FFT 互相关） | `Scene.tsx`、`lib/align-clean.ts` |
+| 家具 3D | Tripo v3.1 图生模型，下载后压缩（≤15 万面、WebP 贴图、meshopt），原文件保留 | `lib/server/jobs.ts`、`scripts/optimize-glb.mjs` |
+| 摆放 | 见下节 | `lib/placement.ts`、`Scene.tsx` |
+| 家具库 | 20 件商品的预处理模型和数据；“帮我找”把一句话解析成筛选条件 | `lib/catalog.json`、`lib/catalog-search.ts` |
 
-所有节点状态真实来自数据库或服务商，不使用假延时生成“结果”。查询每 5 秒触发一次，不显示虚构百分比。原图、原始裁切、掩膜、模型输入、修复结果、SPZ、碰撞网格、家具 GLB 各自独立存储。
+## 摆放规则（`lib/placement.ts`）
+
+房间是 Gaussian splat 扫描，扫描里的书桌、衣柜都不是网格。房间加载后，用较轻的 `.spz` 的 splat 中心建一个 5 cm × 5 cm × 2.5 cm 的占用网格，约 40 ms 建好，每次查询不到 1 ms。
+
+指针射线会在三类对象里找最先碰到的那个：已摆放的家具网格、扫描网格、地平面。
+
+- **朝上的面**（地面、桌面、床面、窗台）：家具放在那里。
+- **家具网格的侧面**：从这件家具上方向下探测，放到它的顶上。
+- **扫描里的侧面**：沿这一列向上找台面，只接受低于视线的台面。
+- **墙、衣柜门、天花板**：不放；拖动中的家具停在上一个合法位置。
+- **擦除框**：框内对扫描透明。
+
+压在一件家具上的东西（向下短探测会碰到它）会被当作它的“乘客”，随它移动和旋转。家具收回或删除时，乘客落到下面的表面；家具缩放后，乘客重新放到它的新顶面上。
+
+## 付费任务（`lib/server/jobs.ts`、`job-budget.ts`、`provider-http.ts`）
+
+- 入队时先按预计积分预留，超出本地预算上限就不建任务。
+- 提交请求从不自动重发。明确被拒会释放预留；无法确认是否已创建的任务进入“待核对”，禁止再次提交。
+- 查询失败时有限次重试；等待超时只保留任务编号，之后继续查询原任务。
+- 实际扣费按服务商返回的明细记账，World Labs 和 Tripo 统一成一个数字。
+
+## 测试
+
+`npm test` 在内存 SQLite 和模拟存储上运行真实的路由与服务端代码，网络全部模拟：
+
+- `tests/provider-workflow.mjs`：付费任务的状态机和记账。
+- `tests/furniture-workflow.mjs`：白底照片、尺寸、添加家具、家具库加入。
+- `tests/project-workflow.mjs`：空间列表、重命名、安全删除、照片指纹复用、擦除、底图对齐、导入、模型压缩。
+- `tests/catalog-search.mjs`：官网链接与价格的完整性检查，以及 31 句搜索。
+- `tests/placement.mjs`：合成房间里的落点、叠放和落下。
+
+`tests/harness.mjs` 是可复用的加载器：把服务端 TypeScript 放进模拟的 D1、R2 和 fetch 环境里运行。新的路由测试用它（目前是 `project-workflow`）。

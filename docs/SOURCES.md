@@ -1,46 +1,48 @@
 # 官方来源与许可证
 
-接口查阅日期：2026-10-03。适配代码依照当前 v3 文档，不沿用旧 Tripo v2 URL。
+## 服务商接口（查阅于 2026-10-03 / 10-04）
 
 - World Labs 生成与草稿型号：<https://docs.worldlabs.ai/api/reference/worlds/generate>
-- World Labs 计费与余额：<https://docs.worldlabs.ai/api/pricing>
+- World Labs 计费与余额：<https://docs.worldlabs.ai/api/pricing>（照片草稿：全景补全 80 + 草稿空间 150 = 230 积分）
 - World Labs SPZ 比例、地面偏移、坐标转换：<https://docs.worldlabs.ai/api/rendering-spz>
 - World Labs 官方示例：<https://github.com/worldlabsai/worldlabs-api-examples>
 - Tripo v3 单图建模：<https://developers.tripo3d.ai/en/docs/generation-image-to-model/standard>
-- Tripo v3 图片上传：<https://developers.tripo3d.ai/en/docs/files>（JPEG/PNG，20MB 服务上限；应用限制 10MB）
+- Tripo v3 图片上传：<https://developers.tripo3d.ai/en/docs/files>（JPEG/PNG，20 MB 服务上限；应用限制 10 MB）
 - Tripo v3 账户：<https://developers.tripo3d.ai/en/docs/account>
-- Tripo 费用：<https://developers.tripo3d.ai/en/pricing>（页面列出带标准纹理 Image→3D 基础 30 积分；应用保守预留 100，禁用昂贵附加项）
-- SAM 3 托管端点与像素掩膜 schema：<https://fal.ai/models/fal-ai/sam-3/image/api>
-- Bria Eraser 掩膜修复 schema：<https://fal.ai/models/fal-ai/bria/eraser/api>
-- Spark（World Labs 维护，MIT，2.3.1，Three peer >=0.180）：<https://github.com/sparkjsdev/spark>
+- Tripo 费用：<https://developers.tripo3d.ai/en/pricing>（标准贴图图生模型 30 积分；应用按 30 预留，不开 PBR 等附加项）
+
+## 前端与运行库
+
+- Spark（World Labs 维护，MIT，2.3.1）：<https://github.com/sparkjsdev/spark>
 - Three.js（MIT）：<https://github.com/mrdoob/three.js>
 - React（MIT）：<https://github.com/facebook/react>
+- vinext、Vite（MIT）；Cloudflare workerd / Miniflare / wrangler（Apache-2.0 / MIT），只用于本地运行。
 
-`package-lock.json` 锁定实际依赖。Three.js 0.186.1 单份去重，与 Spark peer 范围相容。fal.ai SDK 1.10.1 仅在服务端导入。
+`package-lock.json` 锁定实际依赖版本。
 
-托管 SAM 3 / Bria 的“Commercial use”标识不等于模型权重统一采用 MIT。没有下载其模型权重或以开源许可证重新分发；使用须遵循 fal.ai 与模型供应商条款。服务调用费用与账户权限独立于 Tripo/World Labs。
+## 本地识别与修复模型
 
-`resources/validation/` 是用户授权、使用提供的测试照片生成的真实验证资产，仅保存在本私有项目源仓库，未放入公开静态目录。示例床/书桌/柜子由本项目 Three.js 几何体创建，界面明确标为示例，不冒充生成结果。
-
-## 2026-10-03 automatic local recognition
-
-- Transformers.js 3.8.1: https://huggingface.co/docs/transformers.js/v3.8.1
-- DETR panoptic ONNX export: https://huggingface.co/Xenova/detr-resnet-50-panoptic ; pinned revision in `public/vision/models/detr/weights.json`. Only its detection head is used; quantized panoptic masks were rejected during QA.
-- Canonical COCO category names: https://github.com/cocodataset/panopticapi/blob/master/panoptic_coco_categories.json . Corrects unnamed cabinet/table merged classes in the upstream model config.
-- SlimSAM: https://huggingface.co/Xenova/slimsam-77-uniform . Full precision encoder and decoder produce furniture pixel masks; pinned revision in `public/vision/models/slimsam/revision.json`.
-- DETR, SlimSAM, Transformers.js: Apache-2.0. ONNX Runtime: MIT. Notices and licenses ship in `/vision/`.
-- Empty-state room artwork: original image generated for this workbench. It is labeled conceptual inspiration and never used as a user's reconstruction.
-
-
-## Local free background repair (2026-10-03)
-- LaMa original: https://github.com/advimman/lama (Apache-2.0).
-- Carve ONNX fp32 export: https://huggingface.co/Carve/LaMa-ONNX, revision `c3c0c9e468934d62e79c329e35d82dd09ff8c444`, Apache-2.0 model card.
-- SHA256: `1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6`; 208044816 bytes; stored in ignored `.local/models/`.
-- Native ONNX Runtime runs in a Node worker; 512 px aspect-preserving input and reflected padding. Only selected pixels are composited back at original resolution.
+- Transformers.js 3.8.1（Apache-2.0）：<https://huggingface.co/docs/transformers.js/v3.8.1>，在 Node 子进程里运行。
+- DETR panoptic ONNX：<https://huggingface.co/Xenova/detr-resnet-50-panoptic>，固定版本见 `public/vision/models/detr/weights.json`。只用它的检测结果；量化后的全景掩膜在质检中被弃用。
+- COCO 类别名：<https://github.com/cocodataset/panopticapi/blob/master/panoptic_coco_categories.json>，用来修正上游配置里柜子、桌子的类别名。
+- SlimSAM：<https://huggingface.co/Xenova/slimsam-77-uniform>，全精度编码器和解码器生成家具像素轮廓；固定版本见 `public/vision/models/slimsam/revision.json`。
+- LaMa：<https://github.com/advimman/lama>（Apache-2.0）。ONNX fp32 导出：<https://huggingface.co/Carve/LaMa-ONNX>，版本 `c3c0c9e468934d62e79c329e35d82dd09ff8c444`，SHA-256 `1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6`，208,044,816 字节，下载到不提交的 `.local/models/`。
+- DETR、SlimSAM、Transformers.js 为 Apache-2.0，ONNX Runtime 为 MIT。许可证与说明随附在 `public/vision/`。
 
 ## 家具库（2026-10-05）
 
-- 产品图：从用户提供的选品板（第 2 版，“官网原图：IKEA / MUJI / &Tradition / Marshall / iittala / KINTO / Vitra”）中逐张裁出，压成 400 px WebP，放在 `public/catalog/images/`。版权归各品牌所有，仅供本项目展示购买参考；公开发布前需确认使用权。
-- 3D 模型：用户提供的 20 个 Tripo 导出 GLB（`../20款产品3D模型/`）。`scripts/build-catalog.mjs` 只做方向修正、按标称尺寸等比缩放、贴图降到 1024 px WebP、meshopt 压缩，不重新生成。160 MB → 6.2 MB。
-- 价格与链接于 2026-10-05 查询。官网核实的人民币价：LISABO 书桌 ¥999、LISABO 椅 ¥399、IKORNNES ¥199、RUDSTA ¥599、DYTÅG ¥79.99（同系列灰绿色款价格）、SORTSÖ ¥49.99。其余标为“约”（`priceVerified: false`）：MUJI 中国官网不公开价格；&Tradition、Marshall、iittala、KINTO、Vitra 只查到海外官网价，人民币价为估算。MUJI 与两件 IKEA 链接是官方店铺的搜索页（`linkKind: "search"`），因为没有找到稳定的商品页。
-- 工具：@gltf-transform 4.5（MIT）、meshoptimizer 1.3（MIT）、sharp（Apache-2.0）。浏览器端使用 three.js 自带的 `meshopt_decoder`。
+- **价格与链接**：来自用户提供的《温馨卧室第二版 20 款商品：官网链接与美元参考售价》（`20款家具_官网链接与美元售价_2026-10-05.json`，2026-10-05 核对）。
+  - 每件都链接到品牌地区官网的商品页：IKEA 瑞典、新加坡、日本、英国站，MUJI 日本、美国、英国站，&Tradition 日本，Marshall 列支敦士登，Iittala 爱尔兰，KINTO 日本，Vitra 日本。
+  - 价格用公开的单件标价。非美元标价按欧洲央行 2026-10-02 参考汇率换算：<https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html>。
+  - 不含运费、关税和另售配件，不是中国到手价，也不是结算报价。20 件参考合计 $1,350.08。
+  - 会员价（SORTSÖ 的 IKEA Family 价）单独记录，不作为主价格。缺货、仅门店有售、库存未核实的商品照常列出，并标明状态。
+- **人民币换算**：“帮我找”遇到“500 元以内”这类说法时，用同一天的欧洲央行人民币汇率（1 EUR = 7.5259 CNY，即 1 CNY ≈ $0.1492）换成美元再筛选。页面上只显示美元。
+- **产品图**：取自同一批官网产品图（`温馨卧室_20款官网产品图_第2版/images/`），用 `scripts/build-catalog.mjs --images` 裁成 512 px 方图（WebP），放在 `public/catalog/images/`。版权归各品牌所有，只作购买参考展示；公开发布前需确认使用权。
+- **3D 模型**：用户提供的 20 个 Tripo 导出 GLB（`../20款产品3D模型/`）。`scripts/build-catalog.mjs` 只做方向修正、按标称尺寸等比缩放、贴图压到 1024 px WebP、meshopt 压缩，不重新生成。160 MB 压到 6.2 MB。
+- **工具**：@gltf-transform 4.5（MIT）、meshoptimizer 1.3（MIT）、sharp（Apache-2.0）。浏览器端用 three.js 自带的 `meshopt_decoder` 解码。
+
+## 测试与示例素材
+
+- `resources/validation/thumbnail.webp`：用户提供的示例卧室照片的缩略图，用作识别测试的参考图。
+- `resources/validation/living-room.webp`：为本工作台生成的客厅概念图，只用作识别测试的第二张参考图。
+- 示例房间里的床、书桌、柜子是本项目用 Three.js 几何体搭的，界面上明确标为示例，不冒充生成结果。

@@ -133,4 +133,16 @@ await test('stored models are slimmed once; library models and slimmed copies ar
   assert(h.objects.has('p/models/bed.glb'),'the original stays');
   await post({action:'optimize-models',id:'p'});assert.equal(h.calls.length,1,'a slimmed copy is not slimmed again');
 });
+await test('the processed photo is the local repair only: no repair, nothing is accepted',async()=>{
+  const C='11111111-1111-4111-8111-111111111111';
+  h.insert(space('p',{stage:'confirm',branch:'edit',original:'p/uploads/original-a.png',room:undefined,
+    candidates:[{id:C,name:'书桌',kind:'desk',mask:'p/uploads/m.png',box:[0,0,1,1],score:.9,selected:true,source:'local-detr'}]}));
+  for(const k of ['p/uploads/original-a.png','p/uploads/union-mask-1.png','p/uploads/local-background-1.png','p/uploads/cutout-'+C+'-1.png'])h.file(k);
+  const body={action:'prepare',id:'p',original:'p/uploads/original-a.png',selected:[C],mask:'p/uploads/union-mask-1.png',cutouts:{[C]:'p/uploads/cutout-'+C+'-1.png'}};
+  await rejects(body,/本机完成背景修复/);
+  await rejects({...body,localBackground:'q/uploads/local-background-1.png'},/本地修复图片无效/);
+  const r=(await post({...body,localBackground:'p/uploads/local-background-1.png'})).data;
+  assert.equal(r.stage,'review');assert.equal(r.rawBackground,'p/uploads/local-background-1.png');assert.deepEqual(r.cutouts,{[C]:'p/uploads/cutout-'+C+'-1.png'});
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM jobs').get().n,0,'no paid or remote job');assert.equal(h.calls.length,0);
+});
 console.log(`${tests} offline project tests passed; paid API calls: 0`);

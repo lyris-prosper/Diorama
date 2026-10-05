@@ -1,4 +1,4 @@
-import { bindings, owner, getProject, saveProject, cacheRemote } from "@/lib/server/storage";
+import { bindings, owner, getProject, saveProject, cacheRemote, slimModel } from "@/lib/server/storage";
 import { balances, parseIntent, readWorld, parseMarbleSource } from "@/lib/server/providers";
 import { enqueue, tick, retryJob } from "@/lib/server/jobs";
 import { WORLD_ESTIMATE, TRIPO_ESTIMATE } from "@/lib/server/provider-http";
@@ -224,6 +224,13 @@ export async function POST(req: Request) {
     if (b.action === "add-catalog-item") {
       const item = await addCatalogItem(p, b);
       return Response.json({ ...(await saveProject(p, user)), added: item.id });
+    }
+    if (b.action === "optimize-models") {
+      // Models generated before slimming existed (a 42 MB bed) get their light copy; originals stay.
+      for (const i of [...p.items, ...(p.archived ?? [])])
+        if (i.model && !i.model.startsWith("/") && !i.model.endsWith(".lite.glb"))
+          i.model = await slimModel(i.model, i.dims ? Math.max(i.dims.w, i.dims.d, i.dims.h) : undefined);
+      return Response.json(await saveProject(p, user));
     }
     if (b.action === "update-erasure") {
       const e = b.erasure ?? {};

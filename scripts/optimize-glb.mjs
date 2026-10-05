@@ -2,6 +2,9 @@
 // generates (build/local-model-plugin.mjs). Tripo exports carry three 4096² textures and up to
 // 1.5 M triangles; the browser needs neither. Geometry is welded, simplified to a triangle budget
 // and meshopt-compressed; textures become WebP at a size that suits the piece.
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Logger, NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { dedup, getBounds, meshopt, prune, simplify, textureCompress, weld } from "@gltf-transform/functions";
@@ -62,4 +65,13 @@ export async function optimizeGlb(bytes, { largestCm } = {}) {
   const large = largestCm ? largestCm >= 100 : height > 0 && extent / height > 1.4;
   const stats = await slim(doc, { maxTriangles: large ? 150_000 : 60_000, texture: large ? 2048 : 1024 });
   return { bytes: await io.writeBinary(doc), ...stats };
+}
+
+// Child-process entry, used by build/local-model-plugin.mjs so the dev server's memory stays small:
+//   node scripts/optimize-glb.mjs <in.glb> <out.glb> [largest side in cm]
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const [input, output, cm] = process.argv.slice(2);
+  const r = await optimizeGlb(readFileSync(input), { largestCm: Number(cm) || undefined });
+  writeFileSync(output, r.bytes);
+  process.stdout.write(JSON.stringify({ before: r.before, after: r.after, bytes: r.bytes.byteLength }));
 }

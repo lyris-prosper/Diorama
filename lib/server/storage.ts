@@ -90,5 +90,32 @@ export async function cacheRemote(url: string, key: string, format?: "glb" | "sp
   await bindings().bucket.put(key, data, { httpMetadata: {contentType: format === "glb" ? "model/gltf-binary" : res.headers.get("content-type") || "application/octet-stream"} });
   return key;
 }
+/**
+ * A lighter copy of a stored GLB, made by the dev server's local optimizer
+ * (build/local-model-plugin.mjs): its key, or the original key when there is no optimizer or it
+ * fails. The original stays as it is; a paid result is never lost to this step.
+ */
+export async function slimModel(key: string, largestCm?: number): Promise<string> {
+  const { bucket, secrets } = bindings();
+  const optimizer = secrets.LOCAL_OPTIMIZER as string | undefined;
+  if (!optimizer || key.endsWith(".lite.glb")) return key;
+  try {
+    const source = await bucket.get(key);
+    if (!source) return key;
+    const res = await fetch(optimizer + (largestCm ? `?size=${Math.round(largestCm)}` : ""), {
+      method: "POST",
+      body: await source.arrayBuffer(),
+      signal: AbortSignal.timeout(200000),
+    });
+    if (!res.ok) return key;
+    const data = await res.arrayBuffer();
+    if (data.byteLength < 12 || new DataView(data).getUint32(0, true) !== 0x46546c67) return key;
+    const lite = key.replace(/\.glb$/, "") + ".lite.glb";
+    await bucket.put(lite, data, { httpMetadata: { contentType: "model/gltf-binary" } });
+    return lite;
+  } catch {
+    return key;
+  }
+}
 export const asset = (key: string) =>
   `/api/assets?key=${encodeURIComponent(key)}`;

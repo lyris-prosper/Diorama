@@ -6,6 +6,7 @@ import { sites } from "./build/sites-vite-plugin";
 import { connectorPreview } from "./build/connector-preview-plugin.mjs";
 import { localVision } from "./build/local-vision-plugin.mjs";
 import { localRelay } from "./build/local-relay-plugin.mjs";
+import { localModel } from "./build/local-model-plugin.mjs";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -63,7 +64,7 @@ export default defineConfig(async ({ command }) => {
         : {}),
     },
     plugins: [
-      ...(command === "serve" ? [localRelay(), localVision()] : []),
+      ...(command === "serve" ? [localRelay(), localModel(), localVision()] : []),
       vinext(),
       sites({ mockAuth: !managedLinux }),
       connectorPreview(),
@@ -75,7 +76,11 @@ export default defineConfig(async ({ command }) => {
           ...(command === "serve"
             ? {
                 // Provider requests go through the dev server's loopback relay (build/local-relay-plugin.mjs).
-                vars: { LOCAL_RELAY: "http://127.0.0.1:5173/api/local/relay" },
+                vars: {
+                  LOCAL_RELAY: "http://127.0.0.1:5173/api/local/relay",
+                  // Generated models are slimmed here before they are stored (build/local-model-plugin.mjs).
+                  LOCAL_OPTIMIZER: "http://127.0.0.1:5173/api/local/optimize-glb",
+                },
                 services: [
                   {
                     binding: "CONNECTORS",

@@ -33,7 +33,7 @@ const budget=load(root+'/lib/server/job-budget.ts');
 const storage=load(root+'/lib/server/storage.ts');
 const json=(data,status=200)=>Response.json(data,{status});
 const project={id:'p',name:'test',mode:'real',stage:'generating',branch:'edit',items:[{id:'chair',name:'椅子',status:'queued'}],candidates:[],tasks:[],floor:{confirmed:false},revision:0};
-function reset(){sql?.close();sql=new DatabaseSync(':memory:');sql.exec(readFileSync('drizzle/0000_magical_white_queen.sql','utf8'));sql.exec(readFileSync('drizzle/0001_provider_accounting.sql','utf8'));sql.prepare('INSERT INTO projects(id,owner,data,updated,revision) VALUES(?,?,?,?,0)').run('p','u',JSON.stringify(project),Date.now());calls=[];objects=new Map([['image',{bytes:Buffer.from([137,80,78,71]),type:'image/png'}]]);delete env.TRIPO_CREDIT_LIMIT;delete env.WORLDLABS_CREDIT_LIMIT;}
+function reset(){sql?.close();sql=new DatabaseSync(':memory:');sql.exec(readFileSync('drizzle/0000_magical_white_queen.sql','utf8'));sql.exec(readFileSync('drizzle/0001_provider_accounting.sql','utf8'));sql.prepare('INSERT INTO projects(id,owner,data,updated,revision) VALUES(?,?,?,?,0)').run('p','u',JSON.stringify(project),Date.now());calls=[];objects=new Map([['image',{bytes:Buffer.from([137,80,78,71]),type:'image/png'}]]);delete env.TRIPO_CREDIT_LIMIT;delete env.WORLDLABS_CREDIT_LIMIT;delete env.LOCAL_OPTIMIZER;}
 const job=()=>sql.prepare('SELECT * FROM jobs ORDER BY updated DESC LIMIT 1').get();
 const tick=()=>jobs.tick('p','u');
 const enqueue=(kind='furniture')=>jobs.enqueue(project,'u',kind,kind==='world'?'room':'chair',{image:'image'});
@@ -73,6 +73,22 @@ function normalHandler(status='success',cost=30){return (url,init)=>{
 await test('poll timeout preserves ID and continues without another generation POST',async()=>{
  handler=normalHandler();await enqueue();await tick();sql.prepare('UPDATE jobs SET poll_started=?').run(Date.now()-6*60000);await tick();assert.equal(job().status,'paused');assert.equal(job().provider,'task-fixed');assert.equal(job().reserved,30);
  await jobs.retryJob(job().id,'p','u');await tick();assert.equal(job().status,'done');assert.equal(job().actual_credits,30);assert.equal(job().reserved,0);assert.equal(calls.filter(c=>c.url.includes('/generation/')).length,1);assert(objects.has('p/models/chair.glb'));
+});
+const OPTIMIZER='http://127.0.0.1:5173/api/local/optimize-glb';
+const glb=n=>{const b=Buffer.alloc(n);b.writeUInt32LE(0x46546c67,0);b.writeUInt32LE(2,4);b.writeUInt32LE(n,8);return b};
+await test('a generated model is slimmed locally; the room loads the copy, the download is kept',async()=>{
+ env.LOCAL_OPTIMIZER=OPTIMIZER;const base=normalHandler();
+ handler=(url,init)=>url.startsWith(OPTIMIZER)?new Response(glb(16)):base(url,init);
+ await enqueue();await tick();await tick();assert.equal(job().status,'done');
+ assert(objects.has('p/models/chair.glb'),'original kept');assert.equal(objects.get('p/models/chair.lite.glb').bytes.length,16);
+ assert.equal((await storage.getProject('p','u')).items[0].model,'p/models/chair.lite.glb');
+ const sent=calls.find(c=>c.url.startsWith(OPTIMIZER));assert.equal(sent.init.method,'POST');
+});
+await test('when slimming fails the original model is used and the paid job still completes',async()=>{
+ env.LOCAL_OPTIMIZER=OPTIMIZER;const base=normalHandler();
+ handler=(url,init)=>url.startsWith(OPTIMIZER)?json({error:'busy'},503):base(url,init);
+ await enqueue();await tick();await tick();assert.equal(job().status,'done');assert.equal(job().actual_credits,30);
+ assert.equal((await storage.getProject('p','u')).items[0].model,'p/models/chair.glb');assert(!objects.has('p/models/chair.lite.glb'));
 });
 await test('download retry preserves charge and never double charges; overlapping ticks are locked',async()=>{
  const base=normalHandler();let first=true;handler=(url,init)=>{if(url.startsWith('https://assets.')&&first){first=false;return new Response('bad',{status:503})}return base(url,init)};

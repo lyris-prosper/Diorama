@@ -937,16 +937,31 @@ export default function Scene(props: Props) {
     e.plane.visible = p.mode === "real" && !p.floor.confirmed;
     e.plane.position.y = p.floor.height;
     e.plane.scale.setScalar(p.floor.size);
+    // Geometry and textures of a piece that left (or whose model was replaced) are freed with it.
+    const drop = (o: THREE.Object3D) => {
+      e.scene.remove(o);
+      o.traverse((m) => {
+        if (!(m instanceof THREE.Mesh)) return;
+        m.geometry.dispose();
+        for (const mat of [m.material].flat() as THREE.MeshStandardMaterial[]) {
+          mat.map?.dispose();
+          mat.normalMap?.dispose();
+          mat.roughnessMap?.dispose();
+          mat.dispose();
+        }
+      });
+    };
     for (const [id, o] of e.objects) {
       if (!p.items.some((i) => i.id === id)) {
-        e.scene.remove(o);
+        drop(o);
         e.objects.delete(id);
       }
     }
     for (const item of p.items) {
       let old = e.objects.get(item.id);
-      if (old && item.model && !old.userData.model) {
-        e.scene.remove(old);
+      // A model that arrived or was replaced (a slimmed copy) is loaded afresh.
+      if (old && item.model && old.userData.model !== item.model) {
+        drop(old);
         e.objects.delete(item.id);
         old = null;
       }

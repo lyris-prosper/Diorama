@@ -5,7 +5,7 @@ import path from 'node:path';
 import getRawBody from 'raw-body';
 // Runs only on loopback. Models and photos never pass through a hosted inference service.
 // macOS memory that can be handed to a new process without swapping: free + inactive + speculative + purgeable.
-function availableMB(){
+export function availableMB(){
   try {
     const out=execFileSync('vm_stat',{encoding:'utf8'}),page=Number(/page size of (\d+)/.exec(out)?.[1]||16384);
     const pages=k=>Number(new RegExp(`Pages ${k}:\\s+(\\d+)`).exec(out)?.[1]||0);

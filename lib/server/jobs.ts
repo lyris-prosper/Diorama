@@ -1,4 +1,4 @@
-import { bindings, getProject, saveProject, cacheRemote } from "./storage";
+import { bindings, getProject, saveProject, cacheRemote, slimModel } from "./storage";
 import { startWorld, startTripo, startImage, pollWorld, pollTripo, pollImage } from "./providers";
 import { ProviderError, billing } from "./provider-http";
 import { estimate, budgetLimit, BUDGET_USED_SQL, settle } from "./job-budget";
@@ -133,9 +133,12 @@ export async function tick(id: string, user: string) {
         p.stage = "ready";
       }
       if (j.kind === "furniture") {
-        const model = await cacheRemote(
-          out.output?.model_url,
-          `${p.id}/models/${j.target}.glb`, "glb",
+        // The piece may have been put away (undone) while it was generating: keep its model anyway.
+        const item = p.items.find((i) => i.id === j.target) ?? p.archived?.find((i) => i.id === j.target);
+        // The room loads a slimmed copy (fewer triangles, WebP textures); the download is kept as it came.
+        const model = await slimModel(
+          await cacheRemote(out.output?.model_url, `${p.id}/models/${j.target}.glb`, "glb"),
+          item?.dims ? Math.max(item.dims.w, item.dims.d, item.dims.h) : undefined,
         );
         const thumb = out.output?.rendered_image_url
           ? await cacheRemote(
@@ -143,8 +146,6 @@ export async function tick(id: string, user: string) {
               `${p.id}/models/${j.target}.png`,
             )
           : undefined;
-        // The piece may have been put away (undone) while it was generating: keep its model anyway.
-        const item = p.items.find((i) => i.id === j.target) ?? p.archived?.find((i) => i.id === j.target);
         if (item) {
           item.model = model;
           item.thumbnail = thumb;

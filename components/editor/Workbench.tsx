@@ -40,7 +40,7 @@ import {
   ArrowDownToLine,
 } from "lucide-react";
 import { MAX_ITEMS, type Project, type Item, type Branch, type Candidate, type Task, type Erasure, type Dims } from "@/lib/types";
-import { catalogItem, formatPrice } from "@/lib/catalog";
+import { availabilityLabel, catalogItem, formatOriginal, formatPrice, formatUSD, marketLabel } from "@/lib/catalog";
 import { productPhoto } from "@/lib/photo";
 import CatalogPanel from "./CatalogPanel";
 import AddFurnitureDialog, { type NewPiece } from "./AddFurnitureDialog";
@@ -1205,6 +1205,15 @@ export default function Workbench() {
             ) : (
               <>
                 {p.items.length > 0 && <p className="shelf-note">拖进房间，或点一下再选落点</p>}
+                {(() => {
+                  // What the library pieces in this space would cost, at the listed reference prices.
+                  const prices = p.items.flatMap((i) => (i.catalogId ? [catalogItem(i.catalogId)?.price ?? 0] : []));
+                  return prices.length > 0 ? (
+                    <p className="shelf-total">
+                      家具库商品 {prices.length} 件 · 参考合计 <b>{formatUSD(prices.reduce((a, b) => a + b, 0))}</b>
+                    </p>
+                  ) : null;
+                })()}
                 {p.items.length > 0 && p.mode === "real" && (
                   <button className="add-tile" onClick={() => setAddOpen(true)}>
                     <Plus size={15} />
@@ -1517,8 +1526,8 @@ export default function Workbench() {
                 <strong>{item.name}</strong>
                 <span>{entry ? `${entry.shop} · ${formatPrice(entry)}` : item.source === "upload" ? "你上传的家具" : "当前 3D 对象"}</span>
                 {entry && (
-                  <a className="buy-link" href={entry.link} target="_blank" rel="noopener noreferrer" title="新标签页打开">
-                    {entry.linkKind === "search" ? "去官方店搜索" : "去购买"}
+                  <a className="buy-link" href={entry.link} target="_blank" rel="noopener noreferrer" title={`打开 ${entry.shop} ${marketLabel(entry)}的商品页（新标签页）`}>
+                    去官网
                     <ArrowUpRight size={13} />
                   </a>
                 )}
@@ -1530,6 +1539,19 @@ export default function Workbench() {
                   <X size={15} />
                 </button>
               </div>
+              {entry && (
+                <p className="inspector-offer">
+                  {marketLabel(entry)}标价 {formatOriginal(entry)} · {entry.variant}
+                  {availabilityLabel(entry) && (
+                    <>
+                      {" · "}
+                      <em>{availabilityLabel(entry)}</em>
+                    </>
+                  )}
+                  {entry.buyNote && ` · ${entry.buyNote}`}
+                  {entry.memberOffer && ` · ${entry.memberOffer.label} ${formatUSD(entry.memberOffer.price)}`}
+                </p>
+              )}
               <div className="inspector-row">
                 <label>旋转</label>
                 <button

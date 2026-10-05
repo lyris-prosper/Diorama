@@ -2,19 +2,21 @@
 // GLBs under public/catalog/models, sized in real metres, and records their measured size.
 //
 //   node scripts/build-catalog.mjs [--src <folder>] [--force] [--only id,id]
+//   node scripts/build-catalog.mjs --images <folder>
+//
+// --images rebuilds the card pictures (public/catalog/images/<id>.webp) from the official product
+// photos, numbered like the catalog: 01_….jpg is the first entry, 20_….jpg the last.
 //
 // Source models are full Tripo exports (three 4096² textures, 4–18 MB each). Each one is
 // re-oriented (when the catalog asks), scaled uniformly to the product's real size, centred on the
 // floor, given 1024 px WebP textures and meshopt-compressed geometry. No paid service is called:
 // items without a source model are listed with their Tripo estimate and left for the user to decide.
-import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Logger, NodeIO } from "@gltf-transform/core";
-import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
-import { clearNodeTransform, dedup, getBounds, meshopt, prune, simplify, textureCompress, weld } from "@gltf-transform/functions";
-import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
+import { clearNodeTransform, getBounds } from "@gltf-transform/functions";
 import sharp from "sharp";
+import { gltfIO, slim } from "./optimize-glb.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -67,12 +69,34 @@ function unitScale(item, size) {
 }
 const round = (v, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
 
-await MeshoptEncoder.ready;
-await MeshoptDecoder.ready;
-const io = new NodeIO()
-  .setLogger(new Logger(Logger.Verbosity.WARN))
-  .registerExtensions(ALL_EXTENSIONS)
-  .registerDependencies({ "meshopt.encoder": MeshoptEncoder, "meshopt.decoder": MeshoptDecoder });
+// A square card picture: the product trimmed to its outline, centred with a margin on its own
+// backdrop colour (white, or Marshall's grey), 512 px WebP.
+async function cardImage(file, out) {
+  const [r, g, b] = await sharp(file).extract({ left: 0, top: 0, width: 1, height: 1 }).removeAlpha().raw().toBuffer();
+  const background = { r, g, b };
+  const trimmed = await sharp(file).flatten({ background }).trim({ threshold: 18 }).toBuffer();
+  // Two passes: sharp always resizes before it extends within one pipeline.
+  const { data, info } = await sharp(trimmed).resize(456, 456, { fit: "inside" }).toBuffer({ resolveWithObject: true });
+  const x = 512 - info.width, y = 512 - info.height;
+  await sharp(data)
+    .extend({ left: x >> 1, right: x - (x >> 1), top: y >> 1, bottom: y - (y >> 1), background })
+    .webp({ quality: 84 })
+    .toFile(out);
+}
+const imageDir = option("--images");
+if (imageDir) {
+  const dir = resolve(root, imageDir);
+  const files = readdirSync(dir);
+  for (const [k, item] of catalog.items.entries()) {
+    const file = files.find((f) => f.startsWith(String(k + 1).padStart(2, "0") + "_"));
+    if (!file) throw Error(`${item.id}: ${dir} 里没有编号 ${k + 1} 的图片`);
+    await cardImage(join(dir, file), join(root, "public", item.image));
+    console.log(`✓ ${item.id.padEnd(16)} ← ${file}`);
+  }
+  process.exit(0);
+}
+
+const io = await gltfIO();
 
 const missing = [];
 let total = 0;
@@ -102,17 +126,7 @@ for (const item of catalog.items) {
   // Centre the footprint on the origin and stand the model on y = 0, in metres.
   bake(scene, scaleMove(k, [-((min[0] + max[0]) / 2) * k, -min[1] * k, -((min[2] + max[2]) / 2) * k]));
   ({ min, max } = getBounds(scene));
-  const triangles = doc.getRoot().listMeshes().flatMap((m) => m.listPrimitives())
-    .reduce((n, p) => n + (p.getIndices()?.getCount() ?? p.getAttribute("POSITION").getCount()) / 3, 0);
-  await doc.transform(
-    dedup(),
-    prune(),
-    weld(),
-    ...(triangles > MAX_TRIANGLES ? [simplify({ simplifier: MeshoptSimplifier, ratio: MAX_TRIANGLES / triangles, error: 0.0005 })] : []),
-    textureCompress({ encoder: sharp, targetFormat: "webp", slots: /^(baseColor|normal)/, resize: [1024, 1024], quality: 86 }),
-    textureCompress({ encoder: sharp, targetFormat: "webp", slots: /^metallicRoughness/, resize: [512, 512], quality: 80 }),
-    meshopt({ encoder: MeshoptEncoder, level: "medium" }),
-  );
+  await slim(doc, { maxTriangles: MAX_TRIANGLES, texture: 1024 });
   await io.write(outFile, doc);
   const bytes = statSync(outFile).size;
   total += bytes;

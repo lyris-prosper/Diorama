@@ -1,7 +1,7 @@
 // “帮我找”: reads a sentence such as “我想要一张不超过 1 米的书桌” into filter conditions, ranks the
 // library against them and answers in one sentence. Runs in the browser, offline, without a model.
 import { catalogCategories, kindWords } from "./furniture-kinds";
-import type { CatalogItem } from "./catalog";
+import { formatBudget, toUSD, type CatalogItem } from "./catalog";
 
 /** long: the longer side of the footprint, what people usually mean by “多大”. */
 export type Axis = "w" | "d" | "h" | "long";
@@ -11,7 +11,8 @@ export type Conditions = {
   category?: string;
   /** Centimetres. */
   sizes: Limit[];
-  price?: { min?: number; max?: number };
+  /** US dollars, like the library. A budget given in yuan is converted and kept in `asked` for the reply. */
+  price?: { min?: number; max?: number; asked?: { currency: "CNY"; min?: number; max?: number } };
   tags: string[];
   shops: string[];
   /** Words that name a piece directly (“LISABO”, “Emberton”). */
@@ -63,7 +64,7 @@ export const shopWords = [
   { shop: "IKEA", label: "宜家", pattern: /宜家|ikea/gi },
   { shop: "MUJI", label: "无印良品", pattern: /无印良品|无印|muji/gi },
   { shop: "Marshall", label: "Marshall", pattern: /马歇尔|marshall/gi },
-  { shop: "iittala", label: "iittala", pattern: /伊塔拉|iittala/gi },
+  { shop: "Iittala", label: "Iittala", pattern: /伊塔拉|iittala/gi },
   { shop: "KINTO", label: "KINTO", pattern: /kinto/gi },
   { shop: "Vitra", label: "Vitra", pattern: /维特拉|vitra/gi },
   { shop: "&Tradition", label: "&Tradition", pattern: /&\s?tradition|and ?tradition/gi },
@@ -90,7 +91,9 @@ function cnNumber(s: string) {
   }
   return total + section + digit;
 }
-const UNIT = "(?:厘米|公分|cm|毫米|mm|米|m(?![a-z])|元|块钱|块|rmb)";
+// 美元 before 元, so “50 美元” is read as dollars.
+const UNIT = "(?:厘米|公分|cm|毫米|mm|米|m(?![a-z])|美元|美金|刀|usd|dollars?|元|块钱|块|人民币|rmb|cny)";
+const YUAN = /^(?:元|块钱|块|人民币|rmb|cny)$/;
 /** Arabic numerals throughout: “一米二” → 1.2米, “1米5” → 1.5米, “两千块” → 2000块, “1.5k” → 1500. */
 export function normalize(text: string) {
   return text
@@ -109,15 +112,15 @@ const MIN_BEFORE = /至少|不少于|不小于|不低于|不矮于|大于|高于
 const MAX_AFTER = /^\s*(?:以内|之内|以下|内|为止|之下|封顶)/;
 const MIN_AFTER = /^\s*(?:以上|起|开外|多)/;
 const AROUND = /左右|上下|附近|前后|大概|大约|约|差不多|around|about/;
-const PRICE_CUE = /预算|价格|价位|价钱|售价|花|多少钱|[¥￥]/;
+const PRICE_CUE = /预算|价格|价位|价钱|售价|花|多少钱|[¥￥$]|美元|美金/;
 const SIZE_CUE = /宽|长|深|高|矮|尺寸|直径|大小|进深/;
 
 function numbers(text: string): Mention[] {
   const out: Mention[] = [];
-  const re = new RegExp(`[¥￥]?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:(?:到|至|-|~|～|—)\\s*[¥￥]?\\s*(\\d+(?:\\.\\d+)?)\\s*)?(${UNIT})?`, "g");
+  const re = new RegExp(`[¥￥$]?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:(?:到|至|-|~|～|—)\\s*[¥￥$]?\\s*(\\d+(?:\\.\\d+)?)\\s*)?(${UNIT})?`, "g");
   for (let m; (m = re.exec(text)); ) {
     if (!m[0].trim()) { re.lastIndex++; continue; }
-    out.push({ start: m.index, end: m.index + m[0].length, a: Number(m[1]), b: m[2] === undefined ? undefined : Number(m[2]), unit: m[3] ?? (/[¥￥]/.test(m[0]) ? "元" : "") });
+    out.push({ start: m.index, end: m.index + m[0].length, a: Number(m[1]), b: m[2] === undefined ? undefined : Number(m[2]), unit: m[3] ?? (/[¥￥]/.test(m[0]) ? "元" : /\$/.test(m[0]) ? "usd" : "") });
   }
   return out;
 }
@@ -144,16 +147,23 @@ export function parse(input: string): Conditions {
     let after = text.slice(n.end, Math.min(found[i + 1]?.start ?? text.length, n.end + 8));
     after = after.split(/[,;，和且并]/)[0];
     const unit = n.unit;
-    const isPrice = /元|块|rmb/.test(unit) || (!unit && PRICE_CUE.test(before));
+    const isPrice = /元|块|rmb|cny|美金|刀|usd|dollar/.test(unit) || (!unit && PRICE_CUE.test(before));
     const isLength = /米|cm|mm|公分|^m$/.test(unit);
     if (!isPrice && !isLength && !SIZE_CUE.test(before)) return;
     const bound = MAX_BEFORE.test(before) || MAX_AFTER.test(after) ? "max" : MIN_BEFORE.test(before) || MIN_AFTER.test(after) ? "min" : AROUND.test(before + after) ? "around" : null;
     if (isPrice) {
       const p = c.price ?? {};
-      if (n.b !== undefined) Object.assign(p, { min: Math.min(n.a, n.b), max: Math.max(n.a, n.b) });
-      else if (bound === "min") p.min = n.a;
-      else if (bound === "around") Object.assign(p, { min: Math.round(n.a * 0.8), max: Math.round(n.a * 1.2) });
-      else p.max = n.a;
+      let lo: number | undefined, hi: number | undefined;
+      if (n.b !== undefined) [lo, hi] = [Math.min(n.a, n.b), Math.max(n.a, n.b)];
+      else if (bound === "min") lo = n.a;
+      else if (bound === "around") [lo, hi] = [Math.round(n.a * 0.8), Math.round(n.a * 1.2)];
+      else hi = n.a;
+      // Library prices are in US dollars; yuan are converted at the same ECB fixing as the prices.
+      const yuan = YUAN.test(unit);
+      const usd = (v: number) => (yuan ? Math.round(toUSD(v, "CNY") * 100) / 100 : v);
+      if (lo !== undefined) p.min = usd(lo);
+      if (hi !== undefined) p.max = usd(hi);
+      if (yuan) p.asked = { currency: "CNY", ...p.asked, ...(lo !== undefined && { min: lo }), ...(hi !== undefined && { max: hi }) };
       c.price = p;
     } else {
       const cm = (v: number) =>
@@ -227,7 +237,17 @@ function rank(items: CatalogItem[], c: Conditions) {
 }
 
 const AXIS_NAME: Record<Axis, string> = { w: "宽度", d: "深度", h: "高度", long: "宽度" };
-/** “宽度在 100 厘米以内、500 元以内的原木书桌” */
+/** “$50 以内” · “$20–$50” · “500 元（约 $75）以内” */
+export function priceWords({ min, max, asked }: NonNullable<Conditions["price"]>) {
+  const whole = (v: number) => formatBudget(Math.round(v));
+  if (asked) {
+    const yuan = asked.min !== undefined && asked.max !== undefined ? `${asked.min}–${asked.max} 元` : `${asked.max ?? asked.min} 元`;
+    const usd = min !== undefined && max !== undefined ? `${whole(min)}–${whole(max)}` : whole((max ?? min)!);
+    return `${yuan}（约 ${usd}）${asked.min !== undefined && asked.max !== undefined ? "" : asked.max !== undefined ? "以内" : "以上"}`;
+  }
+  return min !== undefined && max !== undefined ? `${formatBudget(min)}–${formatBudget(max)}` : max !== undefined ? `${formatBudget(max)} 以内` : `${formatBudget(min!)} 以上`;
+}
+/** “宽度在 100 厘米以内、$500 以内的原木书桌” */
 export function describe(c: Conditions) {
   const parts: string[] = [];
   for (const s of c.sizes) {
@@ -237,10 +257,7 @@ export function describe(c: Conditions) {
     else if (s.max !== undefined) parts.push(`${n}在 ${s.max} 厘米以内`);
     else if (s.min !== undefined) parts.push(`${n}至少 ${s.min} 厘米`);
   }
-  if (c.price) {
-    const { min, max } = c.price;
-    parts.push(min !== undefined && max !== undefined ? `${min}–${max} 元` : max !== undefined ? `${max} 元以内` : `${min} 元以上`);
-  }
+  if (c.price) parts.push(priceWords(c.price));
   if (c.tabletop) parts.push("能放在桌上");
   const shops = c.shops.map((s) => shopWords.find((w) => w.shop === s)?.label ?? s).join("或");
   const tags = c.tags.map((t) => tagWords.find((w) => w.tag === t)?.label ?? t);
@@ -256,9 +273,9 @@ export function describe(c: Conditions) {
 
 /** The model name for named products (“LISABO”), the full name otherwise. */
 const shortName = (i: CatalogItem) => (/^[A-Za-z&'’]/.test(i.name) ? i.name.split(" ")[0] : i.name);
-/** A space wherever Chinese meets a number or a Latin word: “找到 3 件 500 元以内的 Marshall 音箱”. */
+/** A space wherever Chinese meets a number or a Latin word: “找到 3 件 $500 以内的 Marshall 音箱”. */
 const spaced = (s: string) =>
-  s.replace(/([A-Za-z0-9%])(?=[\u4e00-\u9fff“])/g, "$1 ").replace(/([\u4e00-\u9fff”])(?=[A-Za-z0-9&])/g, "$1 ");
+  s.replace(/([A-Za-z0-9%])(?=[\u4e00-\u9fff“])/g, "$1 ").replace(/([\u4e00-\u9fff”])(?=[A-Za-z0-9&$])/g, "$1 ");
 function without(c: Conditions, rules: Rule[]): Conditions {
   const r = new Set(rules);
   return {
@@ -308,7 +325,7 @@ export function find(items: CatalogItem[], conditions: Conditions): Answer {
     const s = c.sizes[0];
     detail = ranked.map((i) => `${shortName(i)} ${AXIS_NAME[s.axis].slice(0, 1)} ${axisValue(i, s.axis)} 厘米`).join("，") + "。";
   } else if (relaxed.includes("price") && ranked.length <= 2) {
-    detail = ranked.map((i) => `${shortName(i)} ${i.priceVerified ? "" : "约 "}${i.price} 元`).join("，") + "。";
+    detail = ranked.map((i) => `${shortName(i)} ${formatBudget(i.price)}`).join("，") + "。";
   }
   return {
     items: ranked,

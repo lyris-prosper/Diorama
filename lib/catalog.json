@@ -1,6 +1,26 @@
 {
   "updated": "2026-10-05",
-  "note": "价格与链接于 2026-10-05 查询。priceVerified=false 的是参考价（官网未公开人民币价或无法核实），页面显示为“约 ¥…”。linkKind=search 表示跳到官方店铺搜索页。model/modelSize/modelHeight 由 scripts/build-catalog.mjs 生成。",
+  "note": "price 为美元参考价（见 pricing），link 为品牌地区官网的商品页。model / modelSize / modelHeight 由 scripts/build-catalog.mjs 生成。",
+  "pricing": {
+    "currency": "USD",
+    "verified": "2026-10-05",
+    "fx": {
+      "provider": "European Central Bank",
+      "rateDate": "2026-10-02",
+      "source": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html",
+      "usdPer": {
+        "USD": 1,
+        "EUR": 1.1225,
+        "GBP": 1.3200757353,
+        "JPY": 0.0063421662,
+        "SEK": 0.0994242693,
+        "SGD": 0.7813587637,
+        "CNY": 0.1491515965
+      }
+    },
+    "total": 1350.08,
+    "note": "各品牌地区官网公开的单件标价；非美元标价按欧洲央行 2026-10-02 参考汇率换算成美元。不含运费、进口关税与另售配件，不是中国到手价，也不是结算报价。"
+  },
   "items": [
     {
       "id": "lisabo-desk",
@@ -14,10 +34,15 @@
         "h": 74
       },
       "dimsLabel": "118 × 45 × 74 cm",
-      "price": 999,
-      "priceVerified": true,
-      "link": "https://www.ikea.cn/cn/zh/p/lisabo-desk-ash-veneer-10361746/",
-      "linkKind": "product",
+      "price": 198.35,
+      "link": "https://www.ikea.com/se/en/p/lisabo-desk-ash-veneer-30299070/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "originalPrice": 1995,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "白蜡木贴面 118×45×74cm",
+      "sku": "302.990.70",
       "tags": [
         "wood",
         "ash",
@@ -27,6 +52,7 @@
         "warm"
       ],
       "image": "/catalog/images/lisabo-desk.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/lisabo-desk-ash-veneer__0735972_pe740306_s5.jpg",
       "source": {
         "file": "wooden+desk+3d+model.glb"
       },
@@ -50,10 +76,15 @@
         "h": 80
       },
       "dimsLabel": "46 × 51 × 80 cm",
-      "price": 399,
-      "priceVerified": true,
-      "link": "https://www.ikea.cn/cn/zh/p/lisabo-li-sa-bo-yi-zi-bai-zha-mu-80457236/",
-      "linkKind": "product",
+      "price": 50.79,
+      "link": "https://www.ikea.com/sg/en/p/lisabo-chair-ash-80457236/",
+      "market": "SG",
+      "marketName": "新加坡",
+      "originalPrice": 65,
+      "originalCurrency": "SGD",
+      "availability": "in_store_only",
+      "variant": "白蜡木原色",
+      "sku": "804.572.36",
       "tags": [
         "wood",
         "ash",
@@ -63,6 +94,7 @@
         "warm"
       ],
       "image": "/catalog/images/lisabo-chair.webp",
+      "officialImage": "https://www.ikea.com/sg/en/images/products/lisabo-chair-ash__0786549_pe763015_s5.jpg",
       "source": {
         "file": "wooden+chair+3d+model.glb"
       },
@@ -86,10 +118,15 @@
         "h": 45
       },
       "dimsLabel": "36 × 35 × 45 cm",
-      "price": 149,
-      "priceVerified": false,
-      "link": "https://www.ikea.cn/cn/zh/search/?q=NESNA",
-      "linkKind": "search",
+      "price": 15.85,
+      "link": "https://www.ikea.com/jp/en/p/nesna-bedside-table-bamboo-20247128/",
+      "market": "JP",
+      "marketName": "日本",
+      "originalPrice": 2499,
+      "originalCurrency": "JPY",
+      "availability": "in_stock",
+      "variant": "竹原色／玻璃台面",
+      "sku": "202.471.28",
       "tags": [
         "bamboo",
         "wood",
@@ -99,6 +136,7 @@
         "warm"
       ],
       "image": "/catalog/images/nesna-bedside.webp",
+      "officialImage": "https://www.ikea.com/jp/en/images/products/nesna-bedside-table-bamboo__0133450_pe288918_s5.jpg",
       "source": {
         "file": "wooden+table+3d+model.glb"
       },
@@ -122,10 +160,15 @@
         "h": 10
       },
       "dimsLabel": "44 × 12 × 10 cm",
-      "price": 160,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E5%A3%81%E6%8C%82%E5%AE%B6%E5%85%B7%20%E6%90%81%E6%9D%BF",
-      "linkKind": "search",
+      "price": 15.79,
+      "link": "https://www.muji.com/jp/ja/store/cmdty/detail/4550344504994",
+      "market": "JP",
+      "marketName": "日本",
+      "originalPrice": 2490,
+      "originalCurrency": "JPY",
+      "availability": "not_verified",
+      "variant": "橡木贴面原色",
+      "sku": "4550344504994",
       "tags": [
         "wood",
         "oak",
@@ -135,10 +178,11 @@
         "small"
       ],
       "image": "/catalog/images/oak-wall-shelf.webp",
-      "wall": true,
+      "officialImage": "https://img.muji.net/img/item/4550344504994_1260.jpg",
       "source": {
         "file": "wooden+shelf+3d+model.glb"
       },
+      "wall": true,
       "model": "/catalog/models/oak-wall-shelf.glb",
       "modelSize": {
         "w": 42.4,
@@ -159,10 +203,15 @@
         "h": 29.3
       },
       "dimsLabel": "直径 16 × 高 29.3 cm",
-      "price": 2280,
-      "priceVerified": false,
-      "link": "https://www.andtradition.com/products/flowerpot-vp9",
-      "linkKind": "product",
+      "price": 251.15,
+      "link": "https://andtradition.jp/products/flowerpot-vp9?variant=43390694326412",
+      "market": "JP",
+      "marketName": "日本",
+      "originalPrice": 39600,
+      "originalCurrency": "JPY",
+      "availability": "in_stock",
+      "variant": "Vermilion Red 暖红色",
+      "sku": "057000000191",
       "tags": [
         "red",
         "retro",
@@ -173,6 +222,7 @@
         "small"
       ],
       "image": "/catalog/images/flowerpot-vp9.webp",
+      "officialImage": "https://cdn.shopify.com/s/files/1/0571/9310/3500/files/Flowerpot-VP9-Vermillion-Red_on.jpg?v=1727148712",
       "source": {
         "file": "red+desk+lamp+3d+model.glb"
       },
@@ -196,10 +246,15 @@
         "h": 20.4
       },
       "dimsLabel": "9.5 × 10.8 × 20.4 cm",
-      "price": 268,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E5%B8%83%E8%B0%B7%E9%B8%9F%E9%92%9F",
-      "linkKind": "search",
+      "price": 65.94,
+      "link": "https://uk.muji.eu/products/Cuckoo-Clock-White-S-P-20882-H-000000.html",
+      "market": "GB",
+      "marketName": "英国",
+      "originalPrice": 49.95,
+      "originalCurrency": "GBP",
+      "availability": "out_of_stock",
+      "variant": "白色",
+      "sku": "P-20882-H-000000",
       "tags": [
         "white",
         "japanese",
@@ -208,6 +263,7 @@
         "wall"
       ],
       "image": "/catalog/images/cuckoo-clock.webp",
+      "officialImage": "https://cdn11.bigcommerce.com/s-4b0oh2xvlj/images/stencil/1920w/products/11568/1355585/V-20882-H-000999__85164.1762878724.jpg?c=1",
       "source": {
         "file": "cuckoo+clock+3d+model.glb"
       },
@@ -231,10 +287,15 @@
         "h": 40
       },
       "dimsLabel": "宽 27 × 高 40 cm",
-      "price": 199,
-      "priceVerified": true,
-      "link": "https://www.ikea.cn/cn/zh/p/ikornnes-yi-ku-si-jing-zi-bai-zha-mu-80306921/",
-      "linkKind": "product",
+      "price": 31.18,
+      "link": "https://www.ikea.com/sg/en/p/ikornnes-table-mirror-ash-80306921/",
+      "market": "SG",
+      "marketName": "新加坡",
+      "originalPrice": 39.9,
+      "originalCurrency": "SGD",
+      "availability": "in_stock",
+      "variant": "白蜡木原色 27×40cm",
+      "sku": "803.069.21",
       "tags": [
         "wood",
         "ash",
@@ -243,13 +304,14 @@
         "minimal"
       ],
       "image": "/catalog/images/ikornnes-mirror.webp",
+      "officialImage": "https://www.ikea.com/sg/en/images/products/ikornnes-table-mirror-ash__0637396_pe698269_s5.jpg",
+      "source": {
+        "file": "wooden+framed+mirror+3d+model.glb"
+      },
       "known": [
         "w",
         "h"
       ],
-      "source": {
-        "file": "wooden+framed+mirror+3d+model.glb"
-      },
       "model": "/catalog/models/ikornnes-mirror.glb",
       "modelSize": {
         "w": 28.1,
@@ -270,10 +332,16 @@
         "h": 14
       },
       "dimsLabel": "直径 8 × 高 14 cm",
-      "price": 259,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E8%B6%85%E5%A3%B0%E6%B3%A2%E9%A6%99%E8%96%B0%E6%9C%BA",
-      "linkKind": "search",
+      "price": 79,
+      "link": "https://www.muji.us/products/ultrasonic-aroma-diffuser",
+      "market": "US",
+      "marketName": "美国",
+      "originalPrice": 79,
+      "originalCurrency": "USD",
+      "availability": "in_stock",
+      "variant": "白色",
+      "sku": "5055198210293",
+      "buyNote": "不含精油",
       "tags": [
         "white",
         "japanese",
@@ -283,6 +351,7 @@
         "sleep"
       ],
       "image": "/catalog/images/aroma-diffuser.webp",
+      "officialImage": "https://cdn.shopify.com/s/files/1/0556/8066/3742/products/5055198210293_1260.jpg?v=1668802864",
       "source": {
         "file": "white+cylindrical+bottle+3d+model.glb"
       },
@@ -306,10 +375,16 @@
         "h": 12
       },
       "dimsLabel": "26 × 18 × 12 cm",
-      "price": 149,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E5%8F%AF%E5%8F%A0%E6%94%BE%E8%97%A4%E7%BC%96",
-      "linkKind": "search",
+      "price": 29.9,
+      "link": "https://www.muji.us/products/rattan-rectangular-storage?variant=40291217539262",
+      "market": "US",
+      "marketName": "美国",
+      "originalPrice": 29.9,
+      "originalCurrency": "USD",
+      "availability": "in_stock",
+      "variant": "Box - Small 原色",
+      "sku": "4945247381238",
+      "buyNote": "盖子另售",
       "tags": [
         "rattan",
         "woven",
@@ -318,6 +393,7 @@
         "small"
       ],
       "image": "/catalog/images/rattan-box.webp",
+      "officialImage": "https://cdn.shopify.com/s/files/1/0556/8066/3742/products/4945247381238_1260.jpg?v=1720735770",
       "source": {
         "file": "woven+basket+3d+model.glb"
       },
@@ -341,10 +417,16 @@
         "h": 8.5
       },
       "dimsLabel": "15 × 12.5 × 8.5 cm",
-      "price": 128,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E6%9C%A8%E5%88%B6%E7%BA%B8%E5%B7%BE%E7%9B%92",
-      "linkKind": "search",
+      "price": 14.9,
+      "link": "https://www.muji.us/products/wooden-tissue-holder-for-tabletop-tissue-mac71a3a",
+      "market": "US",
+      "marketName": "美国",
+      "originalPrice": 14.9,
+      "originalCurrency": "USD",
+      "availability": "in_stock",
+      "variant": "天然木色 小号",
+      "sku": "4550583410544",
+      "buyNote": "纸巾另配",
       "tags": [
         "wood",
         "japanese",
@@ -352,6 +434,7 @@
         "small"
       ],
       "image": "/catalog/images/tissue-box.webp",
+      "officialImage": "https://cdn.shopify.com/s/files/1/0556/8066/3742/files/4550583410544_org.jpg?v=1762453807",
       "source": {
         "file": "wooden+tissue+box+3d+model.glb"
       },
@@ -375,10 +458,15 @@
         "h": 2
       },
       "dimsLabel": "27 × 19 × 2 cm",
-      "price": 79,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E6%9C%A8%E6%89%98%E7%9B%98",
-      "linkKind": "search",
+      "price": 18,
+      "link": "https://www.muji.us/products/wooden-square-tray-mdka0s?variant=40433854349502",
+      "market": "US",
+      "marketName": "美国",
+      "originalPrice": 18,
+      "originalCurrency": "USD",
+      "availability": "out_of_stock",
+      "variant": "橡木原色 Small",
+      "sku": "4550182577235",
       "tags": [
         "wood",
         "japanese",
@@ -386,6 +474,7 @@
         "small"
       ],
       "image": "/catalog/images/wood-tray.webp",
+      "officialImage": "https://cdn.shopify.com/s/files/1/0556/8066/3742/products/4550182577235_org.jpg?v=1762443303",
       "source": {
         "file": "wooden+tray+3d+model.glb"
       },
@@ -409,10 +498,15 @@
         "h": 6.8
       },
       "dimsLabel": "16 × 7.69 × 6.8 cm",
-      "price": 1599,
-      "priceVerified": false,
-      "link": "https://www.marshall.com/us/en/product/emberton-iii?pid=1006885",
-      "linkKind": "product",
+      "price": 200.93,
+      "link": "https://www.marshall.com/li/en/product/emberton-iii?pid=1006885",
+      "market": "LI",
+      "marketName": "列支敦士登",
+      "originalPrice": 179,
+      "originalCurrency": "EUR",
+      "availability": "in_stock",
+      "variant": "Cream 奶油色",
+      "sku": "1006885",
       "tags": [
         "cream",
         "retro",
@@ -421,6 +515,7 @@
         "small"
       ],
       "image": "/catalog/images/emberton-iii.webp",
+      "officialImage": "https://images.ctfassets.net/javen7msabdh/2siQvLLagLTBTTRVUirxLF/aa51a93497694c29b2a647ca3ca3682f/emberton-iii-cream-front-desktop.jpeg",
       "source": {
         "file": "marshall+speaker+3d+model.glb"
       },
@@ -444,10 +539,15 @@
         "h": 155
       },
       "dimsLabel": "42 × 37 × 155 cm",
-      "price": 599,
-      "priceVerified": true,
-      "link": "https://www.ikea.cn/cn/zh/p/rudsta-glass-door-cabinet-anthracite-80450131/",
-      "linkKind": "product",
+      "price": 130.69,
+      "link": "https://www.ikea.com/gb/en/p/rudsta-glass-door-cabinet-anthracite-60434825/",
+      "market": "GB",
+      "marketName": "英国",
+      "originalPrice": 99,
+      "originalCurrency": "GBP",
+      "availability": "in_stock",
+      "variant": "Anthracite 碳黑色；42×37×155cm",
+      "sku": "604.348.25",
       "tags": [
         "black",
         "glass",
@@ -457,6 +557,7 @@
         "industrial"
       ],
       "image": "/catalog/images/rudsta-cabinet.webp",
+      "officialImage": "https://www.ikea.com/gb/en/images/products/rudsta-glass-door-cabinet-anthracite__0938997_pe794381_s5.jpg",
       "source": {
         "file": "display+cabinet+3d+model.glb"
       },
@@ -471,7 +572,7 @@
     {
       "id": "kivi-votive",
       "name": "Kivi 松绿色烛台",
-      "shop": "iittala",
+      "shop": "Iittala",
       "category": "lighting",
       "kind": "candle",
       "dims": {
@@ -480,10 +581,16 @@
         "h": 6.2
       },
       "dimsLabel": "6 × 6 × 6.2 cm",
-      "price": 259,
-      "priceVerified": false,
-      "link": "https://iittala.com/en-gb/home-decor/candleholders/tealight-candleholders/kivi-tealight-candleholder-60mm-pine-green-1075441",
-      "linkKind": "product",
+      "price": 22.34,
+      "link": "https://www.iittala.com/en-ie/home-decor/candles-and-candle-holders/tealight-candle-holders/kivi-tealight-candleholder-60mm-pine-green-1075441",
+      "market": "IE",
+      "marketName": "爱尔兰",
+      "originalPrice": 19.9,
+      "originalCurrency": "EUR",
+      "availability": "in_stock",
+      "variant": "Pine green 松绿色；60mm款",
+      "sku": "1075441",
+      "buyNote": "茶蜡另配",
       "tags": [
         "green",
         "glass",
@@ -493,6 +600,7 @@
         "warm"
       ],
       "image": "/catalog/images/kivi-votive.webp",
+      "officialImage": "https://www.iittala.com/-/media/products/2024/03/19/16/32/resource_iittalaemea_1075441.jpg",
       "source": {
         "file": "glass+candle+holder+3d+model.glb"
       },
@@ -516,25 +624,33 @@
         "h": 50
       },
       "dimsLabel": "50 × 50 cm",
-      "price": 79.99,
-      "priceVerified": true,
-      "link": "https://www.ikea.cn/cn/zh/search/?q=DYT%C3%85G%20%E5%9E%AB%E5%A5%97",
-      "linkKind": "search",
+      "price": 9.84,
+      "link": "https://www.ikea.com/se/en/p/dytag-cushion-cover-dark-beige-30528482/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "originalPrice": 99,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "深米色 50×50cm（垫芯另配）",
+      "sku": "305.284.82",
+      "buyNote": "仅靠垫套，垫芯另配",
       "tags": [
         "linen",
+        "cream",
         "brown",
         "warm",
         "living",
         "bedroom"
       ],
       "image": "/catalog/images/dytag-cushion.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/dytag-cushion-cover-dark-beige__1052104_pe845935_s5.jpg",
+      "source": {
+        "file": "brown+cushion+3d+model.glb"
+      },
       "known": [
         "w",
         "h"
       ],
-      "source": {
-        "file": "brown+cushion+3d+model.glb"
-      },
       "model": "/catalog/models/dytag-cushion.glb",
       "modelSize": {
         "w": 50.7,
@@ -555,10 +671,22 @@
         "h": 0.3
       },
       "dimsLabel": "55 × 85 cm",
-      "price": 49.99,
-      "priceVerified": true,
-      "link": "https://www.ikea.cn/cn/zh/p/sortsoe-rug-flatwoven-unbleached-50418519/",
-      "linkKind": "product",
+      "price": 5.39,
+      "link": "https://www.ikea.com/sg/en/p/sortsoe-rug-flatwoven-unbleached-50418519/",
+      "market": "SG",
+      "marketName": "新加坡",
+      "originalPrice": 6.9,
+      "originalCurrency": "SGD",
+      "availability": "in_stock",
+      "variant": "未漂白原色 55×85cm",
+      "sku": "504.185.19",
+      "memberOffer": {
+        "label": "IKEA Family 会员价",
+        "price": 4.61,
+        "originalPrice": 5.9,
+        "currency": "SGD",
+        "until": "2026-10-31"
+      },
       "tags": [
         "cotton",
         "cream",
@@ -567,10 +695,7 @@
         "minimal"
       ],
       "image": "/catalog/images/sortso-rug.webp",
-      "known": [
-        "w",
-        "d"
-      ],
+      "officialImage": "https://www.ikea.com/sg/en/images/products/sortsoe-rug-flatwoven-unbleached__0617674_pe688123_s5.jpg",
       "source": {
         "file": "beige+rug+3d+model.glb",
         "rotate": [
@@ -579,6 +704,10 @@
           90
         ]
       },
+      "known": [
+        "w",
+        "d"
+      ],
       "model": "/catalog/models/sortso-rug.glb",
       "modelSize": {
         "w": 53.7,
@@ -599,10 +728,15 @@
         "h": 9
       },
       "dimsLabel": "杯径 8.5 × 高 9 cm",
-      "price": 129,
-      "priceVerified": false,
-      "link": "https://kinto-usa.com/products/21458",
-      "linkKind": "product",
+      "price": 10.46,
+      "link": "https://kinto.co.jp/products/21458",
+      "market": "JP",
+      "marketName": "日本",
+      "originalPrice": 1650,
+      "originalCurrency": "JPY",
+      "availability": "in_stock",
+      "variant": "Amber 琥珀色；310mL；No.21458",
+      "sku": "21458",
       "tags": [
         "amber",
         "glass",
@@ -612,6 +746,7 @@
         "warm"
       ],
       "image": "/catalog/images/cast-amber-mug.webp",
+      "officialImage": "https://cdn.shopify.com/s/files/1/0093/4785/8510/files/21458_t_001_0cc26df7-55c6-46fd-b7dc-9ddcc6d8ffd8.jpg?v=1730160612",
       "source": {
         "file": "orange+glass+mug+3d+model.glb"
       },
@@ -635,10 +770,15 @@
         "h": 15
       },
       "dimsLabel": "长 24.5 × 厚 6 × 高 15 cm",
-      "price": 1480,
-      "priceVerified": false,
-      "link": "https://www.vitra.com/en-cn/product/loiseau",
-      "linkKind": "product",
+      "price": 132.55,
+      "link": "https://store.vitra.co.jp/products/loiseau",
+      "market": "JP",
+      "marketName": "日本",
+      "originalPrice": 20900,
+      "originalCurrency": "JPY",
+      "availability": "out_of_stock",
+      "variant": "天然枫木",
+      "sku": "21505801",
       "tags": [
         "wood",
         "maple",
@@ -647,6 +787,7 @@
         "small"
       ],
       "image": "/catalog/images/loiseau-bird.webp",
+      "officialImage": "https://store.vitra.co.jp/cdn/shop/products/1666917_L_OiseauMaple_FS_v_fullbleed_1440x_d0660b5a-1fb8-4011-b57a-0a4a2c16c046.jpg?v=1754459404",
       "source": {
         "file": "wooden+duck+3d+model.glb",
         "yaw": -90
@@ -671,10 +812,16 @@
         "h": 30.5
       },
       "dimsLabel": "直径 23.5 × 高 30.5 cm",
-      "price": 149,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E6%9C%A8%E5%88%B6%E5%9E%83%E5%9C%BE%E6%A1%B6",
-      "linkKind": "search",
+      "price": 44.9,
+      "link": "https://www.muji.us/products/wooden-dust-bin-with-wire-frame-round-mah71a5s",
+      "market": "US",
+      "marketName": "美国",
+      "originalPrice": 44.9,
+      "originalCurrency": "USD",
+      "availability": "in_stock",
+      "variant": "橡木贴面／内置钢圈",
+      "sku": "4550584915062",
+      "buyNote": "木盖另售",
       "tags": [
         "wood",
         "japanese",
@@ -682,6 +829,7 @@
         "study"
       ],
       "image": "/catalog/images/wood-bin.webp",
+      "officialImage": "https://cdn.shopify.com/s/files/1/0556/8066/3742/files/4550584915062_org.jpg?v=1768500506",
       "source": {
         "file": "wooden+cup+3d+model.glb"
       },
@@ -705,10 +853,15 @@
         "h": 10
       },
       "dimsLabel": "44 × 2.5 × 10 cm（收起时）",
-      "price": 129,
-      "priceVerified": false,
-      "link": "https://muji.tmall.com/search.htm?q=%E5%A3%81%E6%8C%82%E5%AE%B6%E5%85%B7%20%E6%8C%82%E9%92%A9",
-      "linkKind": "search",
+      "price": 22.13,
+      "link": "https://www.muji.com/jp/ja/store/cmdty/detail/4550344505083",
+      "market": "JP",
+      "marketName": "日本",
+      "originalPrice": 3490,
+      "originalCurrency": "JPY",
+      "availability": "not_verified",
+      "variant": "橡木贴面原色",
+      "sku": "4550344505083",
       "tags": [
         "wood",
         "oak",
@@ -718,10 +871,11 @@
         "entry"
       ],
       "image": "/catalog/images/oak-hooks.webp",
-      "wall": true,
+      "officialImage": "https://img.muji.net/img/item/4550344505083_1260.jpg",
       "source": {
         "file": "wooden+board+3d+model.glb"
       },
+      "wall": true,
       "model": "/catalog/models/oak-hooks.glb",
       "modelSize": {
         "w": 44,

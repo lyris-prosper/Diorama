@@ -1,13 +1,13 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Check, Loader2, Plus, Search, SendHorizontal, Sparkles, X } from "lucide-react";
-import { catalog, formatPrice, type CatalogItem } from "@/lib/catalog";
+import { availabilityLabel, catalog, formatPrice, formatUSD, marketLabel, pricing, type CatalogItem } from "@/lib/catalog";
 import { catalogCategories, kindWords } from "@/lib/furniture-kinds";
-import { find, hasConditions, noConditions, parse, shopWords, tagWords, type Conditions, type Limit } from "@/lib/catalog-search";
+import { find, hasConditions, noConditions, parse, priceWords, shopWords, tagWords, type Conditions, type Limit } from "@/lib/catalog-search";
 
 const WIDTHS = [30, 60, 120];
-const PRICES = [200, 500, 1000];
-const SUGGESTIONS = ["不超过 1 米的书桌", "500 元以内的灯", "床头放的小东西", "木质收纳", "挂在墙上的"];
+const PRICES = [20, 50, 100];
+const SUGGESTIONS = ["不超过 1 米的书桌", "50 美元以内的小东西", "床头放的小东西", "木质收纳", "挂在墙上的"];
 const AXIS = { w: "宽", d: "深", h: "高", long: "宽" } as const;
 const limitLabel = (s: Limit) =>
   `${AXIS[s.axis]} ${s.around ? `≈${Math.round((s.min! + s.max!) / 2)}` : s.min !== undefined && s.max !== undefined ? `${s.min}–${s.max}` : s.max !== undefined ? `≤${s.max}` : `≥${s.min}`} cm`;
@@ -27,7 +27,7 @@ function pills(c: Conditions): { key: string; label: string; drop: (c: Condition
   if (c.price && (c.price.min !== undefined || !PRICES.includes(c.price.max!)))
     out.push({
       key: "p",
-      label: c.price.min !== undefined && c.price.max !== undefined ? `¥${c.price.min}–${c.price.max}` : c.price.max !== undefined ? `≤ ¥${c.price.max}` : `≥ ¥${c.price.min}`,
+      label: priceWords(c.price),
       drop: (x) => ({ ...x, price: undefined }),
     });
   for (const t of c.tags)
@@ -186,7 +186,7 @@ export default function CatalogPanel({
                 className={price === v && !(v === undefined && query.price) ? "on" : ""}
                 onClick={() => refine({ ...query, price: v ? { max: v } : undefined })}
               >
-                {v ? `≤${v}` : "不限"}
+                {v ? `≤$${v}` : "不限"}
               </button>
             ))}
           </div>
@@ -210,6 +210,7 @@ export default function CatalogPanel({
               <div className="cat-img">
                 <img src={i.image} alt="" loading="lazy" draggable={false} />
                 {!!inRoom[i.id] && <span className="cat-count">房间里 {inRoom[i.id]} 件</span>}
+                {availabilityLabel(i) && <span className="cat-stock">{availabilityLabel(i)}</span>}
               </div>
               <div className="cat-info">
                 <strong title={i.name}>{i.name}</strong>
@@ -217,17 +218,11 @@ export default function CatalogPanel({
                   {i.shop} · {i.dimsLabel}
                 </span>
                 <div className="cat-row">
-                  <span className={"cat-price" + (i.priceVerified ? "" : " approx")} title={i.priceVerified ? "官网价" : "参考价，以购买页为准"}>
+                  <span className="cat-price" title={`${marketLabel(i)}标价换算的参考价`}>
                     {formatPrice(i)}
                   </span>
-                  <a
-                    className="cat-buy"
-                    href={i.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={i.linkKind === "search" ? `在 ${i.shop} 官方店搜索（新标签页）` : `打开 ${i.shop} 商品页（新标签页）`}
-                  >
-                    {i.linkKind === "search" ? "去搜索" : "去购买"}
+                  <a className="cat-buy" href={i.link} target="_blank" rel="noopener noreferrer" title={`打开 ${i.shop} ${marketLabel(i)}的商品页（新标签页）`}>
+                    去官网
                     <ArrowUpRight size={13} />
                   </a>
                 </div>
@@ -240,7 +235,7 @@ export default function CatalogPanel({
           ))}
         </div>
         <p className="cat-foot">
-          价格与链接查询于 2026 年 10 月；带“约”的是参考价，以购买页为准。产品图来自各品牌官网，3D 模型按标称尺寸缩放。可以把卡片直接拖进房间。
+          价格是各品牌地区官网的公开标价，{pricing.verified.replace(/^(\d+)-0?(\d+)-0?(\d+)$/, "$1 年 $2 月 $3 日")}核对；非美元标价按欧洲央行 {pricing.fx.rateDate.replace(/^\d+-0?(\d+)-0?(\d+)$/, "$1 月 $2 日")}汇率换算。不含运费和关税，不是中国到手价。20 件参考合计 {formatUSD(pricing.total)}。产品图来自各品牌官网，3D 模型按标称尺寸缩放，卡片可以直接拖进房间。
         </p>
       </div>
     </div>

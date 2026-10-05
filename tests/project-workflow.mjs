@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import {harness} from './harness.mjs';
 const h=harness();
 const route=h.load('app/api/workbench/route.ts');
+const assets=h.load('app/api/assets/route.ts');
+const asset=async key=>(await assets.GET(new Request('http://127.0.0.1:5173/api/assets?key='+encodeURIComponent(key)))).status;
 const URL_='http://127.0.0.1:5173/api/workbench';
 const post=async body=>{const r=await route.POST(new Request(URL_,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()};};
 const get=async query=>(await route.GET(new Request(URL_+'?'+query))).json();
@@ -44,8 +46,13 @@ await test('deleting a space keeps files another space still uses; its credit re
   assert(h.objects.has('copy/uploads/original-b.png'));
   assert.equal(h.sql.prepare("SELECT count(*) n FROM projects WHERE id='first'").get().n,0);
   assert.equal(h.sql.prepare("SELECT count(*) n FROM jobs").get().n,1,'the record of spent credits stays');
+  // The copy still opens its room although the space whose folder holds it is gone.
+  assert.equal(await asset('first/room/import-a.spz'),200);
+  assert.equal(await asset('first/uploads/original-a.png'),404,'a file no space uses is not served');
+  h.insert(space('theirs',{room:room('theirs')}),'someone-else');h.file('theirs/room/import-a.spz');
+  assert.equal(await asset('theirs/room/import-a.spz'),404,'nor someone else\'s');
   assert.equal((await post({action:'delete-project',id:'copy'})).status,200);
-  assert.equal(h.objects.size,0,'with nobody using them, the room files go too');
+  assert.deepEqual([...h.objects.keys()],['theirs/room/import-a.spz'],'with nobody using them, the room files go too; others\' stay');
 });
 await test('a space with generation still running, or someone else\'s, cannot be deleted',async()=>{
   h.insert(space('busy'));h.insert(space('theirs'),'someone-else');

@@ -7,13 +7,13 @@ export async function GET(req: Request) {
     const download = query.get("download");
     const project = key.split("/")[0];
     const { db, bucket } = bindings();
-    if (
-      !(await db
-        .prepare("SELECT id FROM projects WHERE id=? AND owner=?")
-        .bind(project, user)
-        .first())
-    )
-      return new Response("Not found", { status: 404 });
+    // A file is readable when it sits in one of the person's spaces, or when one of their spaces
+    // uses it: a room reused through the photo fingerprint stays in the folder of the space that
+    // first made it, which may since have been deleted.
+    const allowed =
+      (await db.prepare("SELECT id FROM projects WHERE id=? AND owner=?").bind(project, user).first()) ||
+      (await db.prepare("SELECT id FROM projects WHERE owner=? AND instr(data, ?) > 0 LIMIT 1").bind(user, JSON.stringify(key)).first());
+    if (!allowed) return new Response("Not found", { status: 404 });
     const obj = await bucket.get(key);
     if (!obj) return new Response("Not found", { status: 404 });
     return new Response(obj.body, {

@@ -41,6 +41,20 @@
 - **3D 模型**：用户提供的 20 个 Tripo 导出 GLB（`../20款产品3D模型/`）。`scripts/build-catalog.mjs` 只做方向修正、按标称尺寸等比缩放、贴图压到 1024 px WebP、meshopt 压缩，不重新生成。160 MB 压到 6.2 MB。
 - **工具**：@gltf-transform 4.5（MIT）、meshoptimizer 1.3（MIT）、sharp（Apache-2.0）。浏览器端用 three.js 自带的 `meshopt_decoder` 解码。
 
+## 演示卧室（2026-10-06）
+
+- 房间：用户在 Marble 官网用 Marble 1.1 生成的世界 `dbf9b812-0db9-40c4-ae74-7fec6b05b600`（500k 与完整 `.spz`）。
+- 空房间底图：Marble 世界 `3d1295b4-e546-42e0-8f51-b878ff47b05a`，由同一视角的无家具照片生成。
+- 两者的 CDN 地址写在 `lib/demo-room.ts`，文件大小与本机副本逐字节一致（7,782,045 / 29,720,238 / 7,417,659 / 28,122,999 字节）。
+- 床：用户的白底床照片（`resources/demo/bed.png`）经 Tripo v3.1 生成、本机压缩后的模型（`public/demo/bed.glb`，1,297,608 字节）。
+- 演示照片 `resources/demo/bedroom.jpg` 是用户自己的卧室照片，只在私有仓库里保存。
+
+## 字体
+
+- Fraunces（SIL Open Font License 1.1）：<https://github.com/undercasetype/Fraunces>，英文标题。
+- Figtree（SIL Open Font License 1.1）：<https://github.com/erikdkennedy/figtree>，英文正文。
+- 通过 `@fontsource-variable/fraunces`、`@fontsource-variable/figtree` 随项目打包，离线可用。中文使用 macOS 自带的宋体和苹方。
+
 ## 测试与示例素材
 
 - `resources/validation/thumbnail.webp`：用户提供的示例卧室照片的缩略图，用作识别测试的参考图。

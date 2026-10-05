@@ -22,6 +22,8 @@
 | 背景修复 | LaMa，只修家具周围裁出的区域，保持原分辨率，羽化贴回 | `scripts/local-vision-worker.mjs` |
 | 3D 房间 | World Labs Marble 草稿生成；或导入 Marble 官网的房间 | `lib/server/providers.ts`、`app/api/workbench/route.ts` |
 | 同照片复用 | 64 位差异哈希，汉明距离 ≤ 8 视为同一张照片 | `set-print` |
+| 演示卧室 | 照片 SHA-256 或指纹匹配时，直接用预设的 Marble 1.1 房间和底图 | `lib/demo-room.ts`、`lib/server/demo.ts` |
+| 家具模型复用 | 同一张家具照片（SHA-256 相同）已生成过模型时直接复用，不建 Tripo 任务 | `reusableModel`（`lib/server/demo.ts`） |
 | 地面与比例 | 从碰撞网格或 splat 点云找地面和天花板，换算成米 | `components/editor/Scene.tsx` |
 | 擦除原家具 | 擦除框隐藏框内的 splat；空房间底图只在框内显示，自动对齐（平面图 FFT 互相关） | `Scene.tsx`、`lib/align-clean.ts` |
 | 家具 3D | Tripo v3.1 图生模型，下载后压缩（≤15 万面、WebP 贴图、meshopt），原文件保留 | `lib/server/jobs.ts`、`scripts/optimize-glb.mjs` |
@@ -42,6 +44,22 @@
 
 压在一件家具上的东西（向下短探测会碰到它）会被当作它的“乘客”，随它移动和旋转。家具收回或删除时，乘客落到下面的表面；家具缩放后，乘客重新放到它的新顶面上。
 
+## 演示卧室（`lib/demo-room.ts`）
+
+- **识别**：上传的原图 SHA-256（在上传键名里）等于演示照片，或照片指纹距离 ≤ 8，就把预设房间给这个空间：Marble 1.1 房间、空房间底图（含对齐参数）、已校准的地面，阶段直接是 `ready`，没有擦除。
+- **文件**：4 个 `.spz` 放在 R2 的 `presets/bedroom/`，不属于任何空间。`ensureDemoFiles()` 先从本机原有的键复制，没有就从 Marble 公开 CDN 下载（免费）；启动脚本会在服务就绪后调用 `prepare-demo` 提前准备。资产接口对 `presets/` 放行，删除空间永远不碰 `presets/`。
+- **床**：已生成的床模型和缩略图在 `public/demo/`，静态提供。点在床的擦除框范围内时，编辑面板预填床的类别、尺寸和擦除框；上传的床照片 SHA-256 相同（或指纹 ≤ 6）时，`edit-furniture` 直接放回这个模型（按原来的摆位和朝向），不建任务、不预留积分。其他照片如果以前用 Tripo 生成过，也会从 `jobs` 记录里找到原模型复用。
+
+## 中英文（`lib/i18n.ts`）
+
+- 页面文字都写成 `t("中文", "English")`，表格类文字写成 `{ zh, en }` 或 `name / nameEn`。语言存在浏览器 localStorage，第一次访问按浏览器语言；服务端先渲染中文，水合后再切换（`useSyncExternalStore`），不会出现水合不一致。
+- 请求带 `x-lang` 头。服务端的提示用 `say(中文, English)`（`lib/server/say.ts`），按请求语言返回；生成任务的错误把英文写在 `jobs.result.errorEn`。本机识别助手的进度和错误是 `{ zh, en }`。
+- `tests/i18n.mjs` 检查页面里每段中文都有英文对照，服务端抛给用户的错误都带英文。
+
+## 首页模型（`components/editor/Maquette.tsx`）
+
+木作底板上的一间卧室：程序生成的房间、矮床、纸灯笼、植物、镜子、地毯，加上家具库里 15 件商品自己的 3D 模型（悬停显示价格）。阳光从窗户照进来，有光柱和浮尘；“白天 / 黄昏”切换时，台灯、灯笼、灯串和烛光亮起。画面不在视野内或标签页隐藏时停止渲染；系统设置了“减少动态效果”时不播放动画。
+
 ## 付费任务（`lib/server/jobs.ts`、`job-budget.ts`、`provider-http.ts`）
 
 - 入队时先按预计积分预留，超出本地预算上限就不建任务。
@@ -55,8 +73,9 @@
 
 - `tests/provider-workflow.mjs`：付费任务的状态机和记账。
 - `tests/furniture-workflow.mjs`：白底照片、尺寸、添加家具、家具库加入。
-- `tests/project-workflow.mjs`：空间列表、重命名、安全删除、照片指纹复用、擦除、底图对齐、导入、模型压缩。
-- `tests/catalog-search.mjs`：官网链接与价格的完整性检查，以及 31 句搜索。
+- `tests/project-workflow.mjs`：空间列表、重命名、安全删除、照片指纹复用、擦除、底图对齐、导入、模型压缩、演示卧室、模型复用、英文错误。
+- `tests/catalog-search.mjs`：官网链接与价格的完整性检查，以及 48 句搜索（31 句中文、17 句英文）。
+- `tests/i18n.mjs`：页面和服务端文字的中英文对照检查。
 - `tests/placement.mjs`：合成房间里的落点、叠放和落下。
 
 `tests/harness.mjs` 是可复用的加载器：把服务端 TypeScript 放进模拟的 D1、R2 和 fetch 环境里运行。新的路由测试用它（目前是 `project-workflow`）。

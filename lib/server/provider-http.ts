@@ -1,0 +1,92 @@
+import { outbound } from "./outbound";
+export type ErrorCategory = "auth" | "balance" | "parameters" | "timeout" | "provider" | "network";
+export class ProviderError extends Error {
+  category: ErrorCategory;
+  requestId?: string;
+  code?: string | number;
+  retryable = false;
+  uncertain = false;
+  terminal = false;
+  taskStatus?: string;
+  credits?: number;
+  constructor(message: string, options: Partial<ProviderError> & { category: ErrorCategory }) {
+    super(message);
+    Object.assign(this, options);
+    this.category = options.category;
+  }
+}
+export function safeText(value: unknown, secrets: string[] = []) {
+  let text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  for (const secret of secrets.filter(Boolean)) text = text.split(secret).join("[已隐藏]");
+  return text.replace(/Bearer\s+\S+/gi, "Bearer [已隐藏]").slice(0, 700);
+}
+export function failure(provider: string, status: number, body: any, requestId?: string, secrets: string[] = []) {
+  const code = body?.code;
+  const category: ErrorCategory = status === 401 || [1000, 1001].includes(Number(code)) ? "auth"
+    : status === 402 || Number(code) === 2010 ? "balance"
+    : [400, 422].includes(status) || [1004, 2002, 2003, 2004, 2008, 2015].includes(Number(code)) ? "parameters"
+    : "provider";
+  const labels = {auth:"密钥无效或未获授权",balance:"余额不足",parameters:"参数或输入图片错误",provider:"服务商错误",timeout:"请求超时",network:"网络连接失败"};
+  const detail = safeText(body?.message ?? body?.detail ?? body?.error?.message ?? `HTTP ${status}`, secrets);
+  const id = safeText(requestId || body?.request_id || "", secrets);
+  return new ProviderError(`${provider}：${labels[category]}。${detail}${id ? `（请求编号：${id}）` : ""}`, {
+    category, code, requestId: id || undefined,
+    retryable: status === 429 || status >= 500 || Number(code) === 2000,
+  });
+}
+// Only GET requests are retried. A generation POST is never automatically repeated.
+export async function providerJSON(url: string, init: RequestInit = {}, paid = false) {
+  const provider = url.includes("tripo3d") ? "Tripo" : "World Labs";
+  const headers = new Headers(init.headers);
+  const secrets = [headers.get("Authorization")?.replace(/^Bearer /i, "") || "", headers.get("WLT-Api-Key") || ""];
+  const maxAttempts = (init.method || "GET") === "GET" ? 3 : 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let error: ProviderError;
+    try {
+      const response = await outbound(url, { ...init, signal: AbortSignal.timeout(25000) });
+      const id = response.headers.get("x-request-id") || response.headers.get("request-id") || undefined;
+      let body: any;
+      try { body = await response.json(); }
+      catch {
+        if (!response.ok) {
+          const e = failure(provider, response.status, {}, id, secrets);
+          e.uncertain = paid && (response.status >= 500 || response.status === 408);
+          throw e;
+        }
+        throw new ProviderError(`${provider}：服务商返回了无法解析的结果。${id ? `（请求编号：${safeText(id, secrets)}）` : ""}`, {
+          category: "provider", requestId: id, uncertain: paid && (response.ok || response.status >= 500 || response.status === 408),
+          retryable: response.ok || response.status >= 500 || response.status === 429,
+        });
+      }
+      if (!response.ok || (body.code !== undefined && body.code !== 0)) {
+        const e = failure(provider, response.status, body, id, secrets);
+        e.uncertain = paid && (response.status >= 500 || response.status === 408);
+        throw e;
+      }
+      return body;
+    } catch (e) {
+      error = e instanceof ProviderError ? e : new ProviderError(`${provider}：${(e as Error).name === "TimeoutError" || (e as Error).name === "AbortError" ? "请求超时" : "网络连接失败"}。`, {
+        category: ["TimeoutError", "AbortError"].includes((e as Error).name) ? "timeout" : "network",
+        retryable: true, uncertain: paid,
+      });
+    }
+    if (!error.retryable || attempt + 1 === maxAttempts) throw error;
+    await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+  }
+  throw Error("查询未完成");
+}
+export function creditNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+export function billing(kind: string, output: any) {
+  return {
+    cost: creditNumber(kind === "world" ? output?.cost?.total_credits : output?.credits_consumed),
+    details: kind === "world" ? output?.cost?.line_items ?? [] : { credits_consumed: output?.credits_consumed ?? null },
+  };
+}
+export const WORLD_ESTIMATE = 230;
+export const TRIPO_ESTIMATE = 30;
+export const TRIPO_SETTINGS = Object.freeze({
+  model: "v3.1-20260211", texture: true, pbr: false, texture_quality: "standard",
+  geometry_quality: "standard", enable_image_autofix: false,
+});

@@ -1,0 +1,734 @@
+{
+  "updated": "2026-10-05",
+  "note": "价格与链接于 2026-10-05 查询。priceVerified=false 的是参考价（官网未公开人民币价或无法核实），页面显示为“约 ¥…”。linkKind=search 表示跳到官方店铺搜索页。model/modelSize/modelHeight 由 scripts/build-catalog.mjs 生成。",
+  "items": [
+    {
+      "id": "lisabo-desk",
+      "name": "LISABO 浅木书桌",
+      "shop": "IKEA",
+      "category": "furniture",
+      "kind": "desk",
+      "dims": {
+        "w": 118,
+        "d": 45,
+        "h": 74
+      },
+      "dimsLabel": "118 × 45 × 74 cm",
+      "price": 999,
+      "priceVerified": true,
+      "link": "https://www.ikea.cn/cn/zh/p/lisabo-desk-ash-veneer-10361746/",
+      "linkKind": "product",
+      "tags": [
+        "wood",
+        "ash",
+        "nordic",
+        "study",
+        "minimal",
+        "warm"
+      ],
+      "image": "/catalog/images/lisabo-desk.webp",
+      "source": {
+        "file": "wooden+desk+3d+model.glb"
+      },
+      "model": "/catalog/models/lisabo-desk.glb",
+      "modelSize": {
+        "w": 118,
+        "d": 44.4,
+        "h": 76.2
+      },
+      "modelHeight": 0.7617
+    },
+    {
+      "id": "lisabo-chair",
+      "name": "LISABO 浅木椅",
+      "shop": "IKEA",
+      "category": "furniture",
+      "kind": "chair",
+      "dims": {
+        "w": 46,
+        "d": 51,
+        "h": 80
+      },
+      "dimsLabel": "46 × 51 × 80 cm",
+      "price": 399,
+      "priceVerified": true,
+      "link": "https://www.ikea.cn/cn/zh/p/lisabo-li-sa-bo-yi-zi-bai-zha-mu-80457236/",
+      "linkKind": "product",
+      "tags": [
+        "wood",
+        "ash",
+        "nordic",
+        "study",
+        "minimal",
+        "warm"
+      ],
+      "image": "/catalog/images/lisabo-chair.webp",
+      "source": {
+        "file": "wooden+chair+3d+model.glb"
+      },
+      "model": "/catalog/models/lisabo-chair.glb",
+      "modelSize": {
+        "w": 46,
+        "d": 52.7,
+        "h": 78.7
+      },
+      "modelHeight": 0.7874
+    },
+    {
+      "id": "nesna-bedside",
+      "name": "NESNA 竹制床边桌",
+      "shop": "IKEA",
+      "category": "furniture",
+      "kind": "side-table",
+      "dims": {
+        "w": 36,
+        "d": 35,
+        "h": 45
+      },
+      "dimsLabel": "36 × 35 × 45 cm",
+      "price": 149,
+      "priceVerified": false,
+      "link": "https://www.ikea.cn/cn/zh/search/?q=NESNA",
+      "linkKind": "search",
+      "tags": [
+        "bamboo",
+        "wood",
+        "glass",
+        "bedroom",
+        "small",
+        "warm"
+      ],
+      "image": "/catalog/images/nesna-bedside.webp",
+      "source": {
+        "file": "wooden+table+3d+model.glb"
+      },
+      "model": "/catalog/models/nesna-bedside.glb",
+      "modelSize": {
+        "w": 35.9,
+        "d": 36,
+        "h": 44
+      },
+      "modelHeight": 0.4403
+    },
+    {
+      "id": "oak-wall-shelf",
+      "name": "橡木壁挂搁板",
+      "shop": "MUJI",
+      "category": "storage",
+      "kind": "shelf",
+      "dims": {
+        "w": 44,
+        "d": 12,
+        "h": 10
+      },
+      "dimsLabel": "44 × 12 × 10 cm",
+      "price": 160,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E5%A3%81%E6%8C%82%E5%AE%B6%E5%85%B7%20%E6%90%81%E6%9D%BF",
+      "linkKind": "search",
+      "tags": [
+        "wood",
+        "oak",
+        "japanese",
+        "wall",
+        "minimal",
+        "small"
+      ],
+      "image": "/catalog/images/oak-wall-shelf.webp",
+      "wall": true,
+      "source": {
+        "file": "wooden+shelf+3d+model.glb"
+      },
+      "model": "/catalog/models/oak-wall-shelf.glb",
+      "modelSize": {
+        "w": 42.4,
+        "d": 12.8,
+        "h": 10
+      },
+      "modelHeight": 0.1
+    },
+    {
+      "id": "flowerpot-vp9",
+      "name": "Flowerpot VP9 蘑菇灯",
+      "shop": "&Tradition",
+      "category": "lighting",
+      "kind": "lamp",
+      "dims": {
+        "w": 16,
+        "d": 16,
+        "h": 29.3
+      },
+      "dimsLabel": "直径 16 × 高 29.3 cm",
+      "price": 2280,
+      "priceVerified": false,
+      "link": "https://www.andtradition.com/products/flowerpot-vp9",
+      "linkKind": "product",
+      "tags": [
+        "red",
+        "retro",
+        "portable",
+        "accent",
+        "bedroom",
+        "study",
+        "small"
+      ],
+      "image": "/catalog/images/flowerpot-vp9.webp",
+      "source": {
+        "file": "red+desk+lamp+3d+model.glb"
+      },
+      "model": "/catalog/models/flowerpot-vp9.glb",
+      "modelSize": {
+        "w": 16,
+        "d": 16,
+        "h": 28.7
+      },
+      "modelHeight": 0.2867
+    },
+    {
+      "id": "cuckoo-clock",
+      "name": "小号布谷鸟钟",
+      "shop": "MUJI",
+      "category": "decor",
+      "kind": "clock",
+      "dims": {
+        "w": 9.5,
+        "d": 10.8,
+        "h": 20.4
+      },
+      "dimsLabel": "9.5 × 10.8 × 20.4 cm",
+      "price": 268,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E5%B8%83%E8%B0%B7%E9%B8%9F%E9%92%9F",
+      "linkKind": "search",
+      "tags": [
+        "white",
+        "japanese",
+        "minimal",
+        "small",
+        "wall"
+      ],
+      "image": "/catalog/images/cuckoo-clock.webp",
+      "source": {
+        "file": "cuckoo+clock+3d+model.glb"
+      },
+      "model": "/catalog/models/cuckoo-clock.glb",
+      "modelSize": {
+        "w": 9.6,
+        "d": 10,
+        "h": 20.4
+      },
+      "modelHeight": 0.204
+    },
+    {
+      "id": "ikornnes-mirror",
+      "name": "IKORNNES 木框镜",
+      "shop": "IKEA",
+      "category": "decor",
+      "kind": "mirror",
+      "dims": {
+        "w": 27,
+        "d": 18,
+        "h": 40
+      },
+      "dimsLabel": "宽 27 × 高 40 cm",
+      "price": 199,
+      "priceVerified": true,
+      "link": "https://www.ikea.cn/cn/zh/p/ikornnes-yi-ku-si-jing-zi-bai-zha-mu-80306921/",
+      "linkKind": "product",
+      "tags": [
+        "wood",
+        "ash",
+        "nordic",
+        "bedroom",
+        "minimal"
+      ],
+      "image": "/catalog/images/ikornnes-mirror.webp",
+      "known": [
+        "w",
+        "h"
+      ],
+      "source": {
+        "file": "wooden+framed+mirror+3d+model.glb"
+      },
+      "model": "/catalog/models/ikornnes-mirror.glb",
+      "modelSize": {
+        "w": 28.1,
+        "d": 19.3,
+        "h": 38.5
+      },
+      "modelHeight": 0.3851
+    },
+    {
+      "id": "aroma-diffuser",
+      "name": "100mL 香薰机",
+      "shop": "MUJI",
+      "category": "appliance",
+      "kind": "diffuser",
+      "dims": {
+        "w": 8,
+        "d": 8,
+        "h": 14
+      },
+      "dimsLabel": "直径 8 × 高 14 cm",
+      "price": 259,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E8%B6%85%E5%A3%B0%E6%B3%A2%E9%A6%99%E8%96%B0%E6%9C%BA",
+      "linkKind": "search",
+      "tags": [
+        "white",
+        "japanese",
+        "minimal",
+        "bedroom",
+        "small",
+        "sleep"
+      ],
+      "image": "/catalog/images/aroma-diffuser.webp",
+      "source": {
+        "file": "white+cylindrical+bottle+3d+model.glb"
+      },
+      "model": "/catalog/models/aroma-diffuser.glb",
+      "modelSize": {
+        "w": 8,
+        "d": 8,
+        "h": 13
+      },
+      "modelHeight": 0.1299
+    },
+    {
+      "id": "rattan-box",
+      "name": "可叠放藤编盒",
+      "shop": "MUJI",
+      "category": "storage",
+      "kind": "basket",
+      "dims": {
+        "w": 26,
+        "d": 18,
+        "h": 12
+      },
+      "dimsLabel": "26 × 18 × 12 cm",
+      "price": 149,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E5%8F%AF%E5%8F%A0%E6%94%BE%E8%97%A4%E7%BC%96",
+      "linkKind": "search",
+      "tags": [
+        "rattan",
+        "woven",
+        "japanese",
+        "warm",
+        "small"
+      ],
+      "image": "/catalog/images/rattan-box.webp",
+      "source": {
+        "file": "woven+basket+3d+model.glb"
+      },
+      "model": "/catalog/models/rattan-box.glb",
+      "modelSize": {
+        "w": 26,
+        "d": 17.8,
+        "h": 12.8
+      },
+      "modelHeight": 0.128
+    },
+    {
+      "id": "tissue-box",
+      "name": "木制纸巾盒",
+      "shop": "MUJI",
+      "category": "storage",
+      "kind": "tissue",
+      "dims": {
+        "w": 15,
+        "d": 12.5,
+        "h": 8.5
+      },
+      "dimsLabel": "15 × 12.5 × 8.5 cm",
+      "price": 128,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E6%9C%A8%E5%88%B6%E7%BA%B8%E5%B7%BE%E7%9B%92",
+      "linkKind": "search",
+      "tags": [
+        "wood",
+        "japanese",
+        "warm",
+        "small"
+      ],
+      "image": "/catalog/images/tissue-box.webp",
+      "source": {
+        "file": "wooden+tissue+box+3d+model.glb"
+      },
+      "model": "/catalog/models/tissue-box.glb",
+      "modelSize": {
+        "w": 14.8,
+        "d": 12.5,
+        "h": 13.6
+      },
+      "modelHeight": 0.1357
+    },
+    {
+      "id": "wood-tray",
+      "name": "小号木托盘",
+      "shop": "MUJI",
+      "category": "storage",
+      "kind": "tray",
+      "dims": {
+        "w": 27,
+        "d": 19,
+        "h": 2
+      },
+      "dimsLabel": "27 × 19 × 2 cm",
+      "price": 79,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E6%9C%A8%E6%89%98%E7%9B%98",
+      "linkKind": "search",
+      "tags": [
+        "wood",
+        "japanese",
+        "minimal",
+        "small"
+      ],
+      "image": "/catalog/images/wood-tray.webp",
+      "source": {
+        "file": "wooden+tray+3d+model.glb"
+      },
+      "model": "/catalog/models/wood-tray.glb",
+      "modelSize": {
+        "w": 27,
+        "d": 17.8,
+        "h": 2.3
+      },
+      "modelHeight": 0.0234
+    },
+    {
+      "id": "emberton-iii",
+      "name": "Emberton III 奶油音箱",
+      "shop": "Marshall",
+      "category": "appliance",
+      "kind": "speaker",
+      "dims": {
+        "w": 16,
+        "d": 7.69,
+        "h": 6.8
+      },
+      "dimsLabel": "16 × 7.69 × 6.8 cm",
+      "price": 1599,
+      "priceVerified": false,
+      "link": "https://www.marshall.com/us/en/product/emberton-iii?pid=1006885",
+      "linkKind": "product",
+      "tags": [
+        "cream",
+        "retro",
+        "portable",
+        "living",
+        "small"
+      ],
+      "image": "/catalog/images/emberton-iii.webp",
+      "source": {
+        "file": "marshall+speaker+3d+model.glb"
+      },
+      "model": "/catalog/models/emberton-iii.glb",
+      "modelSize": {
+        "w": 16,
+        "d": 7,
+        "h": 7.1
+      },
+      "modelHeight": 0.0705
+    },
+    {
+      "id": "rudsta-cabinet",
+      "name": "RUDSTA 窄高玻璃柜",
+      "shop": "IKEA",
+      "category": "furniture",
+      "kind": "cabinet",
+      "dims": {
+        "w": 42,
+        "d": 37,
+        "h": 155
+      },
+      "dimsLabel": "42 × 37 × 155 cm",
+      "price": 599,
+      "priceVerified": true,
+      "link": "https://www.ikea.cn/cn/zh/p/rudsta-glass-door-cabinet-anthracite-80450131/",
+      "linkKind": "product",
+      "tags": [
+        "black",
+        "glass",
+        "steel",
+        "display",
+        "living",
+        "industrial"
+      ],
+      "image": "/catalog/images/rudsta-cabinet.webp",
+      "source": {
+        "file": "display+cabinet+3d+model.glb"
+      },
+      "model": "/catalog/models/rudsta-cabinet.glb",
+      "modelSize": {
+        "w": 41.4,
+        "d": 42,
+        "h": 155
+      },
+      "modelHeight": 1.55
+    },
+    {
+      "id": "kivi-votive",
+      "name": "Kivi 松绿色烛台",
+      "shop": "iittala",
+      "category": "lighting",
+      "kind": "candle",
+      "dims": {
+        "w": 6,
+        "d": 6,
+        "h": 6.2
+      },
+      "dimsLabel": "6 × 6 × 6.2 cm",
+      "price": 259,
+      "priceVerified": false,
+      "link": "https://iittala.com/en-gb/home-decor/candleholders/tealight-candleholders/kivi-tealight-candleholder-60mm-pine-green-1075441",
+      "linkKind": "product",
+      "tags": [
+        "green",
+        "glass",
+        "nordic",
+        "accent",
+        "small",
+        "warm"
+      ],
+      "image": "/catalog/images/kivi-votive.webp",
+      "source": {
+        "file": "glass+candle+holder+3d+model.glb"
+      },
+      "model": "/catalog/models/kivi-votive.glb",
+      "modelSize": {
+        "w": 6,
+        "d": 6,
+        "h": 5.2
+      },
+      "modelHeight": 0.0523
+    },
+    {
+      "id": "dytag-cushion",
+      "name": "DYTÅG 亚麻靠垫套",
+      "shop": "IKEA",
+      "category": "textile",
+      "kind": "cushion",
+      "dims": {
+        "w": 50,
+        "d": 15,
+        "h": 50
+      },
+      "dimsLabel": "50 × 50 cm",
+      "price": 79.99,
+      "priceVerified": true,
+      "link": "https://www.ikea.cn/cn/zh/search/?q=DYT%C3%85G%20%E5%9E%AB%E5%A5%97",
+      "linkKind": "search",
+      "tags": [
+        "linen",
+        "brown",
+        "warm",
+        "living",
+        "bedroom"
+      ],
+      "image": "/catalog/images/dytag-cushion.webp",
+      "known": [
+        "w",
+        "h"
+      ],
+      "source": {
+        "file": "brown+cushion+3d+model.glb"
+      },
+      "model": "/catalog/models/dytag-cushion.glb",
+      "modelSize": {
+        "w": 50.7,
+        "d": 47.1,
+        "h": 49.3
+      },
+      "modelHeight": 0.4927
+    },
+    {
+      "id": "sortso-rug",
+      "name": "SORTSÖ 原色小地毯",
+      "shop": "IKEA",
+      "category": "textile",
+      "kind": "rug",
+      "dims": {
+        "w": 55,
+        "d": 85,
+        "h": 0.3
+      },
+      "dimsLabel": "55 × 85 cm",
+      "price": 49.99,
+      "priceVerified": true,
+      "link": "https://www.ikea.cn/cn/zh/p/sortsoe-rug-flatwoven-unbleached-50418519/",
+      "linkKind": "product",
+      "tags": [
+        "cotton",
+        "cream",
+        "bedroom",
+        "warm",
+        "minimal"
+      ],
+      "image": "/catalog/images/sortso-rug.webp",
+      "known": [
+        "w",
+        "d"
+      ],
+      "source": {
+        "file": "beige+rug+3d+model.glb",
+        "rotate": [
+          0,
+          0,
+          90
+        ]
+      },
+      "model": "/catalog/models/sortso-rug.glb",
+      "modelSize": {
+        "w": 53.7,
+        "d": 87.1,
+        "h": 2.4
+      },
+      "modelHeight": 0.0243
+    },
+    {
+      "id": "cast-amber-mug",
+      "name": "CAST AMBER 琥珀杯",
+      "shop": "KINTO",
+      "category": "tableware",
+      "kind": "cup",
+      "dims": {
+        "w": 10.5,
+        "d": 8.5,
+        "h": 9
+      },
+      "dimsLabel": "杯径 8.5 × 高 9 cm",
+      "price": 129,
+      "priceVerified": false,
+      "link": "https://kinto-usa.com/products/21458",
+      "linkKind": "product",
+      "tags": [
+        "amber",
+        "glass",
+        "japanese",
+        "accent",
+        "small",
+        "warm"
+      ],
+      "image": "/catalog/images/cast-amber-mug.webp",
+      "source": {
+        "file": "orange+glass+mug+3d+model.glb"
+      },
+      "model": "/catalog/models/cast-amber-mug.glb",
+      "modelSize": {
+        "w": 10.7,
+        "d": 8.3,
+        "h": 9
+      },
+      "modelHeight": 0.09
+    },
+    {
+      "id": "loiseau-bird",
+      "name": "L'Oiseau 枫木小鸟",
+      "shop": "Vitra",
+      "category": "decor",
+      "kind": "ornament",
+      "dims": {
+        "w": 24.5,
+        "d": 6,
+        "h": 15
+      },
+      "dimsLabel": "长 24.5 × 厚 6 × 高 15 cm",
+      "price": 1480,
+      "priceVerified": false,
+      "link": "https://www.vitra.com/en-cn/product/loiseau",
+      "linkKind": "product",
+      "tags": [
+        "wood",
+        "maple",
+        "nordic",
+        "accent",
+        "small"
+      ],
+      "image": "/catalog/images/loiseau-bird.webp",
+      "source": {
+        "file": "wooden+duck+3d+model.glb",
+        "yaw": -90
+      },
+      "model": "/catalog/models/loiseau-bird.glb",
+      "modelSize": {
+        "w": 23.6,
+        "d": 7.3,
+        "h": 15
+      },
+      "modelHeight": 0.15
+    },
+    {
+      "id": "wood-bin",
+      "name": "木制圆形垃圾桶",
+      "shop": "MUJI",
+      "category": "storage",
+      "kind": "bin",
+      "dims": {
+        "w": 23.5,
+        "d": 23.5,
+        "h": 30.5
+      },
+      "dimsLabel": "直径 23.5 × 高 30.5 cm",
+      "price": 149,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E6%9C%A8%E5%88%B6%E5%9E%83%E5%9C%BE%E6%A1%B6",
+      "linkKind": "search",
+      "tags": [
+        "wood",
+        "japanese",
+        "minimal",
+        "study"
+      ],
+      "image": "/catalog/images/wood-bin.webp",
+      "source": {
+        "file": "wooden+cup+3d+model.glb"
+      },
+      "model": "/catalog/models/wood-bin.glb",
+      "modelSize": {
+        "w": 23.5,
+        "d": 23.5,
+        "h": 31.7
+      },
+      "modelHeight": 0.3174
+    },
+    {
+      "id": "oak-hooks",
+      "name": "橡木三连衣帽钩",
+      "shop": "MUJI",
+      "category": "storage",
+      "kind": "hook",
+      "dims": {
+        "w": 44,
+        "d": 2.5,
+        "h": 10
+      },
+      "dimsLabel": "44 × 2.5 × 10 cm（收起时）",
+      "price": 129,
+      "priceVerified": false,
+      "link": "https://muji.tmall.com/search.htm?q=%E5%A3%81%E6%8C%82%E5%AE%B6%E5%85%B7%20%E6%8C%82%E9%92%A9",
+      "linkKind": "search",
+      "tags": [
+        "wood",
+        "oak",
+        "japanese",
+        "wall",
+        "minimal",
+        "entry"
+      ],
+      "image": "/catalog/images/oak-hooks.webp",
+      "wall": true,
+      "source": {
+        "file": "wooden+board+3d+model.glb"
+      },
+      "model": "/catalog/models/oak-hooks.glb",
+      "modelSize": {
+        "w": 44,
+        "d": 5.8,
+        "h": 9.3
+      },
+      "modelHeight": 0.0927
+    }
+  ]
+}

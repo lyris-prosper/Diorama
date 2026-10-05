@@ -1,6 +1,13 @@
 import type { Candidate } from './types';
+import { localStatus, localVisionJob, base64Blob } from './local-vision';
 export type LocalCandidate = Omit<Candidate,'id'|'mask'|'selected'|'source'> & {mask:Blob};
-export function recognizeFurniture(image:Blob,onProgress:(message:string,percent?:number)=>void,signal:AbortSignal) {
+export async function recognizeFurniture(image:Blob,onProgress:(message:string,percent?:number)=>void,signal:AbortSignal) {
+  const local=await localStatus();
+  if(local?.local){
+    if(!local.recognition)throw Error('本地模型未安装，请重新启动工作台完成模型检查。');
+    const result=await localVisionJob('recognize',image,undefined,onProgress,signal);
+    return result.candidates.map((c:any)=>({...c,mask:base64Blob(c.mask)})) as LocalCandidate[];
+  }
   return new Promise<LocalCandidate[]>((resolve,reject)=>{
     const worker=new Worker('/vision/worker.js',{type:'module'});
     const id=crypto.randomUUID();

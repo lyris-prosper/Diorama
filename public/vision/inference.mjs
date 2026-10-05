@@ -15,13 +15,19 @@ export async function segmentFurniture(detector,raw,RawImage,sam,processor,Tenso
     const target=targets[index];
     const b=target.box.map(v=>Math.max(0,Math.min(1,v)));
     const [x0,y0,x1,y1]=b, cx=(x0+x1)/2,cy=(y0+y1)/2;
-    const positives=target.label==='couch' || target.label==='bed'
+    // Beds and sofas fill their box, so interior points work well. Desks, tables, cabinets and chairs
+    // often have empty space at the box centre (e.g. wall between desk legs), so they are prompted
+    // with the box itself, encoded as SAM's top-left/bottom-right corner labels 2 and 3.
+    const filled=target.label==='couch' || target.label==='bed';
+    const positives=filled
       ? [[cx,cy],[x0+(x1-x0)*.22,cy],[x0+(x1-x0)*.78,cy],[cx,y0+(y1-y0)*.25],[cx,y0+(y1-y0)*.75]]
-      : [[cx,cy]];
-    const points=[...positives,[Math.max(0,x0-0.035),cy],[Math.min(1,x1+0.035),cy],[cx,Math.max(0,y0-0.035)],[cx,Math.min(1,y1+0.035)]]
-      .map(([x,y])=>[x*raw.width,y*raw.height]);
+      : [];
+    const points=(filled
+      ? [...positives,[Math.max(0,x0-0.035),cy],[Math.min(1,x1+0.035),cy],[cx,Math.max(0,y0-0.035)],[cx,Math.min(1,y1+0.035)]]
+      : [[x0,y0],[x1,y1]]).map(([x,y])=>[x*raw.width,y*raw.height]);
+    const labels=filled?[...positives.map(()=>1n),0n,0n,0n,0n]:[2n,3n];
     const input_points=processor.reshape_input_points([points],processed.original_sizes,processed.reshaped_input_sizes);
-    const input_labels=new Tensor('int64',BigInt64Array.from([...positives.map(()=>1n),0n,0n,0n,0n]),[1,1,points.length]);
+    const input_labels=new Tensor('int64',BigInt64Array.from(labels),[1,1,points.length]);
     const result=await sam({...embeddings,input_points,input_labels});
     const masks=await processor.post_process_masks(result.pred_masks,processed.original_sizes,processed.reshaped_input_sizes);
     const candidates=masks[0][0];

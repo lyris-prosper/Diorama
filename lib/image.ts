@@ -63,8 +63,8 @@ export async function prepareImages(original: string, selected: Candidate[]) {
     const side = Math.max(x1 - x0 + 1, y1 - y0 + 1) * 1.18;
     const cut = canvas(1024, 1024);
     const cc = cut.getContext("2d")!;
-    cc.fillStyle = "#fff";
-    cc.fillRect(0, 0, 1024, 1024);
+    // Preserve transparency for downloading and subsequent compositing.
+    cc.clearRect(0, 0, 1024, 1024);
     cc.drawImage(
       source,
       x0,

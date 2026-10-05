@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { outbound } from "./outbound";
 import type { Project, Task } from "../types";
 export function bindings() {
   const e = env as unknown as Record<string, any>;
@@ -55,6 +56,10 @@ export async function tasks(id: string, user: string): Promise<Task[]> {
     status: r.status,
     providerId: r.provider,
     attempt: r.attempt,
+    estimatedCredits: r.estimated,
+    reservedCredits: r.reserved,
+    actualCredits: r.actual_credits,
+    billingDetails: r.billing_details ? JSON.parse(r.billing_details) : undefined,
     error: r.error,
     output: r.result ? JSON.parse(r.result) : undefined,
   }));
@@ -71,16 +76,18 @@ export async function dataURI(key: string) {
   const b = await bytes(key);
   return `data:${b.type};base64,${Buffer.from(b.buffer).toString("base64")}`;
 }
-export async function cacheRemote(url: string, key: string) {
-  const res = await fetch(url);
-  if (!res.ok || !res.body)
-    throw Error("生成资产下载失败，可重试下载，无需重新生成。");
-  await bindings().bucket.put(key, res.body, {
-    httpMetadata: {
-      contentType:
-        res.headers.get("content-type") || "application/octet-stream",
-    },
-  });
+export async function cacheRemote(url: string, key: string, format?: "glb" | "spz") {
+  if (typeof url !== "string" || !url.startsWith("https://")) throw Error("服务商没有返回有效的资产下载地址，可继续查询原任务。");
+  // Room files can be tens of MB; allow time for a slow network.
+  const res = await outbound(url, { signal: AbortSignal.timeout(240000) });
+  if (!res.ok || !res.body) throw Error(`生成资产下载失败（HTTP ${res.status}），可重试下载，无需重新生成。`);
+  if (Number(res.headers.get("content-length")) > 256 * 1024 * 1024) throw Error("生成文件过大，已暂停下载；原任务已保留。");
+  const data = await res.arrayBuffer();
+  const head = new Uint8Array(data);
+  if (!data.byteLength || data.byteLength > 256 * 1024 * 1024) throw Error("生成文件为空或超过本地下载限制。");
+  if (format === "glb" && (data.byteLength < 12 || new DataView(data).getUint32(0,true) !== 0x46546c67 || new DataView(data).getUint32(4,true) !== 2 || new DataView(data).getUint32(8,true) !== data.byteLength)) throw Error("模型文件不是完整有效的 GLB，请重试下载原任务。");
+  if (format === "spz" && !(head[0] === 0x1f && head[1] === 0x8b)) throw Error("房间文件格式异常，请重试下载原任务。");
+  await bindings().bucket.put(key, data, { httpMetadata: {contentType: format === "glb" ? "model/gltf-binary" : res.headers.get("content-type") || "application/octet-stream"} });
   return key;
 }
 export const asset = (key: string) =>

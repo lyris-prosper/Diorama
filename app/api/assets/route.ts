@@ -2,7 +2,9 @@ import { bindings, owner } from "@/lib/server/storage";
 export async function GET(req: Request) {
   try {
     const user = owner(req);
-    const key = new URL(req.url).searchParams.get("key") || "";
+    const query = new URL(req.url).searchParams;
+    const key = query.get("key") || "";
+    const download = query.get("download");
     const project = key.split("/")[0];
     const { db, bucket } = bindings();
     if (
@@ -20,6 +22,7 @@ export async function GET(req: Request) {
           obj.httpMetadata?.contentType || "application/octet-stream",
         "Cache-Control": "private, max-age=3600",
         "X-Content-Type-Options": "nosniff",
+        ...(download ? {"Content-Disposition":`attachment; filename="room-image.png"; filename*=UTF-8''${encodeURIComponent(download.slice(0,100))}`} : {}),
       },
     });
   } catch {

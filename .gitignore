@@ -47,3 +47,7 @@ next-env.d.ts
 .dev.vars*
 !.env.example
 *.tsbuildinfo
+/.local/
+
+# Personal Claude Code permissions
+/.claude/settings.local.json

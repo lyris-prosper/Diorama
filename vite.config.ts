@@ -4,6 +4,8 @@ import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 import { connectorPreview } from "./build/connector-preview-plugin.mjs";
+import { localVision } from "./build/local-vision-plugin.mjs";
+import { localRelay } from "./build/local-relay-plugin.mjs";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -61,6 +63,7 @@ export default defineConfig(async ({ command }) => {
         : {}),
     },
     plugins: [
+      ...(command === "serve" ? [localRelay(), localVision()] : []),
       vinext(),
       sites({ mockAuth: !managedLinux }),
       connectorPreview(),
@@ -71,6 +74,8 @@ export default defineConfig(async ({ command }) => {
           ...localBindingConfig,
           ...(command === "serve"
             ? {
+                // Provider requests go through the dev server's loopback relay (build/local-relay-plugin.mjs).
+                vars: { LOCAL_RELAY: "http://127.0.0.1:5173/api/local/relay" },
                 services: [
                   {
                     binding: "CONNECTORS",

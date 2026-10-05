@@ -18,6 +18,13 @@ async function openWhenReady(url){
   const open=args=>new Promise(r=>spawn('open',args,{stdio:'ignore'}).on('exit',code=>r(code===0)).on('error',()=>r(false)));
   if(!(await open(['-a','Google Chrome',url]))&&!(await open(['-a','Microsoft Edge',url])))await open([url]);
 }
+// Already running (another window, or started in the background): just open the page.
+const running=await fetch('http://127.0.0.1:5173/api/local/status').then(r=>r.ok&&r.json()).catch(()=>null);
+if(running?.local){
+  console.log('\n房间工作台已经在运行：http://localhost:5173\n');
+  if(!process.env.NO_OPEN)await openWhenReady('http://localhost:5173');
+  process.exit(0);
+}
 await run(['scripts/setup-local-models.mjs']);
 await run(['node_modules/wrangler/bin/wrangler.js','d1','migrations','apply','DB','--local','--config','wrangler.local.json','--persist-to','.wrangler/state']);
 console.log('\n房间工作台：http://localhost:5173\n照片、识别、抠图与背景修复均保存在本机。关闭此窗口将停止服务。\n');

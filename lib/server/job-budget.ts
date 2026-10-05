@@ -1,10 +1,11 @@
+import { say } from "./say";
 import { bindings } from "./storage";
 import { WORLD_ESTIMATE, TRIPO_ESTIMATE } from "./provider-http";
 export const estimate = (kind: string) => kind === "world" ? WORLD_ESTIMATE : kind === "furniture" ? TRIPO_ESTIMATE : 0;
 export function budgetLimit(kind: string) {
   const secrets = bindings().secrets;
   const value = Number(kind === "world" ? secrets.WORLDLABS_CREDIT_LIMIT ?? 6770 : secrets.TRIPO_CREDIT_LIMIT ?? 5000);
-  if (!Number.isFinite(value) || value < 0) throw Error("预算上限配置无效，已停止提交。");
+  if (!Number.isFinite(value) || value < 0) throw say("预算上限配置无效，已停止提交。", "The budget limit setting is invalid, so nothing was submitted.");
   return kind === "world" ? Math.min(7000,value) : value;
 }
 // Keys are shared by this installation, so the cap includes every owner/project.

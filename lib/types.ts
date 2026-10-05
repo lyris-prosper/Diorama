@@ -66,6 +66,8 @@ export type Task = {
   billingDetails?: unknown;
   progress?: number;
   error?: string;
+  /** The same error in English, for the English page. */
+  errorEn?: string;
   attempt: number;
   output?: any;
 };
@@ -98,6 +100,8 @@ export type Project = {
     scale: number;
     offset: number;
     source?: "generated" | "imported";
+    /** Set when this is a ready-made room (lib/demo-room.ts), e.g. "bedroom". */
+    preset?: string;
     erasures?: Erasure[];
     /** An empty-room world shown only inside erasures, to fill what the furniture hid. */
     clean?: CleanLayer;

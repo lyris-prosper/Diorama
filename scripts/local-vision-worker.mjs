@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 const send = message => new Promise(resolve => process.send ? process.send(message, resolve) : resolve());
-const progress = message => send({type:'progress',message});
+// Messages carry both languages; the page shows the one it is in.
+const progress = (zh,en) => send({type:'progress',message:{zh,en}});
+const said = (zh,en) => Object.assign(Error(zh),{en});
 // Recognition peaks around 3.5–4.5 GB on an 8 GB Mac. Stop ourselves before the system starts thrashing.
 let stopping = false;
 const limitMB = Number(process.env.LOCAL_VISION_MAX_MB) || 4600;
@@ -14,7 +16,8 @@ setInterval(() => {
     stopping = true;
     const stop = () => process.kill(process.pid,'SIGKILL');
     setTimeout(stop, 300);
-    void send({type:'error',message:`本地模型内存占用超过 ${Math.round(limitMB/1024*10)/10} GB，已自动停止以保护电脑。请关闭其他软件后重试。`}).then(stop);
+    const gb = Math.round(limitMB/1024*10)/10;
+    void send({type:'error',message:{zh:`本地模型内存占用超过 ${gb} GB，已自动停止以保护电脑。请关闭其他软件后重试。`,en:`The local model went over ${gb} GB of memory and was stopped to protect the Mac. Close other apps and try again.`}}).then(stop);
   }
 }, 100).unref();
 const decode = value => Buffer.from(value,'base64');
@@ -28,10 +31,10 @@ async function recognize(image) {
     if(!String(key).includes('/detr/onnx/model_quantized.onnx'))return;
     const manifest=JSON.parse(await readFile(new URL('weights.json',dir)));
     const data=Buffer.concat(await Promise.all(manifest.parts.map(p=>readFile(new URL(p.file,dir)))));
-    if(createHash('sha256').update(data).digest('hex')!==manifest.sha256)throw Error('本地识别模型不完整，请重新安装模型。');
+    if(createHash('sha256').update(data).digest('hex')!==manifest.sha256)throw said('本地识别模型不完整，请重新安装模型。','The local recognition model is incomplete. Reinstall the models.');
     return new Response(data,{headers:{'Content-Length':String(data.length)}});
   },async put(){}};
-  progress('正在加载本地家具识别模型');
+  progress('正在加载本地家具识别模型','Loading the local furniture recognition model');
   const detector=await pipeline('image-segmentation','detr',{dtype:'q8',local_files_only:true,device:'cpu'});
   // The DETR preset otherwise scales a 4:3 photo up to 999×1333; its unused panoptic mask head then needs ~4 GB.
   detector.processor.image_processor.size={shortest_edge:800,longest_edge:1066};
@@ -39,7 +42,7 @@ async function recognize(image) {
   const processor=await AutoProcessor.from_pretrained('slimsam',{local_files_only:true});
   const {data,info}=await sharp(image,{limitInputPixels:24e6}).rotate().resize(1024,1024,{fit:'inside',withoutEnlargement:true}).removeAlpha().raw().toBuffer({resolveWithObject:true});
   const raw=new RawImage(new Uint8ClampedArray(data),info.width,info.height,info.channels);
-  const results=await segmentFurniture(detector,raw,RawImage,sam,processor,Tensor,progress);
+  const results=await segmentFurniture(detector,raw,RawImage,sam,processor,Tensor,m=>progress(m,m.replace('正在描绘家具轮廓','Outlining the furniture')));
   const candidates=[];
   for(const {mask,...item} of results){
     const rgba=Buffer.alloc(mask.width*mask.height*4);
@@ -65,17 +68,17 @@ function dilate(mask,width,height,r){
 }
 async function inpaint(image,mask) {
   const ort=await import('onnxruntime-node');
-  progress('正在加载本地背景修复模型');
+  progress('正在加载本地背景修复模型','Loading the local background repair model');
   const session=await ort.InferenceSession.create(new URL('../.local/models/lama_fp32.onnx',import.meta.url).pathname,{intraOpNumThreads:4,interOpNumThreads:1});
   try {
     const {data:original,info}=await sharp(image,{limitInputPixels:24e6}).rotate().removeAlpha().toColourspace('srgb').raw().toBuffer({resolveWithObject:true});
     const {width,height}=info;
     const maskMeta=await sharp(mask,{limitInputPixels:24e6}).metadata();
-    if(maskMeta.width!==width||maskMeta.height!==height)throw Error('轮廓和照片尺寸不一致，请重新圈选。');
+    if(maskMeta.width!==width||maskMeta.height!==height)throw said('轮廓和照片尺寸不一致，请重新圈选。','The outline and the photo differ in size. Outline it again.');
     const originalMask=await sharp(mask).flatten({background:'#000'}).greyscale().threshold(127).raw().toBuffer();
     const area=originalMask.reduce((n,v)=>n+(v>127),0);
-    if(area<16)throw Error('没有有效圈选区域。');
-    if(area>width*height*.9)throw Error('圈选范围超过照片的九成，请只圈选要移除的家具。');
+    if(area<16)throw said('没有有效圈选区域。','Nothing valid is outlined.');
+    if(area>width*height*.9)throw said('圈选范围超过照片的九成，请只圈选要移除的家具。','The outline covers over 90% of the photo. Outline only the furniture to remove.');
     // Furniture edges and contact shadows sit just outside a tight outline and leave a ghost.
     // Grow the removal area, then blend it in with a soft edge.
     const grow=Math.max(6,Math.round(Math.max(width,height)*0.012)),soft=Math.max(2,Math.round(grow/4));
@@ -94,7 +97,7 @@ async function inpaint(image,mask) {
     const m=await sharp(grown,{raw:{width,height,channels:1}}).extract({left,top,width:cw,height:ch}).resize(w,h,{kernel:'nearest'}).extend({right:512-w,bottom:512-h,left:0,top:0,background:'#000'}).greyscale().raw().toBuffer();
     const imageTensor=new Float32Array(3*512*512),maskTensor=new Float32Array(512*512);
     for(let i=0;i<512*512;i++){for(let c=0;c<3;c++)imageTensor[c*512*512+i]=rgb[i*3+c]/255;maskTensor[i]=m[i]>127?1:0;}
-    progress('正在移除家具并补全墙面与地板');
+    progress('正在移除家具并补全墙面与地板','Removing the furniture and filling in wall and floor');
     const result=await session.run({image:new ort.Tensor('float32',imageTensor,[1,3,512,512]),mask:new ort.Tensor('float32',maskTensor,[1,1,512,512])});
     const output=result[session.outputNames[0]].data,generated=Buffer.alloc(512*512*3);
     for(let i=0;i<512*512;i++)for(let c=0;c<3;c++)generated[i*3+c]=Math.max(0,Math.min(255,Math.round(output[c*512*512+i])));
@@ -113,7 +116,7 @@ process.once('message', async job => {
     const image=decode(job.image);
     const result=job.kind==='recognize'?await recognize(image):await inpaint(image,decode(job.mask));
     await send({type:'complete',result});
-  } catch(e){await send({type:'error',message:e.message});}
+  } catch(e){await send({type:'error',message:{zh:e.message,en:e.en??e.message}});}
   // Disconnect only after the (possibly multi-MB) result has been flushed to the parent.
   process.disconnect?.();
 });

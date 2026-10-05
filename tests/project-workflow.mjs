@@ -68,11 +68,11 @@ await test('the example room opens again instead of being created twice',async()
   assert.notEqual(c.id,d.id);
 });
 await test('the same photo reuses the room of an earlier space; another photo does not',async()=>{
-  const source=space('source',{room:{...room('source'),erasures:[{id:'e',center:[0,0,0],size:[1,1,1],rotation:0}]},photoPrint:'a3aba3177be6031d',floor:{height:-1.23,size:9.5,confirmed:true}});
+  const source=space('source',{room:{...room('source'),erasures:[{id:'e',center:[0,0,0],size:[1,1,1],rotation:0}]},photoPrint:'1234567890abcdef',floor:{height:-1.23,size:9.5,confirmed:true}});
   h.insert(source);
   h.insert(space('fresh',{stage:'upload',floor:{height:0,size:6,confirmed:false}}));
   // Re-saved or re-compressed: a few bits differ.
-  const r=(await post({action:'set-print',id:'fresh',print:'a3aba3177be6031f'})).data;
+  const r=(await post({action:'set-print',id:'fresh',print:'1234567890abcdee'})).data;
   assert.equal(r.room.splat,'source/room/import-a.spz');assert.deepEqual(r.room.erasures,[],'the earlier space\'s erasures stay with it');
   assert.deepEqual(r.floor,{height:-1.23,size:9.5,confirmed:true});assert.equal(r.stage,'ready');
   h.insert(space('other',{stage:'upload'}));
@@ -144,5 +144,94 @@ await test('the processed photo is the local repair only: no repair, nothing is 
   const r=(await post({...body,localBackground:'p/uploads/local-background-1.png'})).data;
   assert.equal(r.stage,'review');assert.equal(r.rawBackground,'p/uploads/local-background-1.png');assert.deepEqual(r.cutouts,{[C]:'p/uploads/cutout-'+C+'-1.png'});
   assert.equal(h.sql.prepare('SELECT count(*) n FROM jobs').get().n,0,'no paid or remote job');assert.equal(h.calls.length,0);
+});
+
+// The sample bedroom (lib/demo-room.ts): its photo opens its Marble 1.1 room; its bed comes back free.
+const demo=JSON.parse(JSON.stringify(h.load('lib/demo-room.ts').DEMO_ROOM));
+const DEMO_SHA=demo.photo.sha256,BED_SHA=demo.furniture[0].photo.sha256;
+const spz=()=>Buffer.from([0x1f,0x8b,8,0,1,2,3]);
+const localDemoFiles=()=>{for(const f of demo.files)h.file(f.local,'application/octet-stream',spz())};
+const postAs=async(lang,body)=>{const r=await route.POST(new Request(URL_,{method:'POST',headers:{'Content-Type':'application/json','x-lang':lang},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()};};
+await test('the sample photo opens the sample bedroom at once: calibrated, with its empty-room layer, nothing erased',async()=>{
+  localDemoFiles();
+  h.insert(space('fresh',{stage:'branch',original:`fresh/uploads/original-${DEMO_SHA}.png`,floor:{height:0,size:6,confirmed:false}}));
+  // The same file: recognised by its bytes even when the print came out differently.
+  const r=(await post({action:'set-print',id:'fresh',print:'0000000000000000'})).data;
+  assert.equal(r.demo,true);assert.equal(r.stage,'ready');assert.equal(r.name,'卧室');
+  assert.equal(r.room.splat,'presets/bedroom/room.spz');assert.equal(r.room.splatFull,'presets/bedroom/room-full.spz');
+  assert.equal(r.room.preset,'bedroom');assert.equal(r.room.source,'imported');assert.deepEqual(r.room.erasures,[]);
+  assert.deepEqual(r.room.clean,{...demo.clean});assert.deepEqual(r.floor,{height:-1.23,size:9.5,confirmed:true});
+  for(const f of demo.files)assert(h.objects.has(f.key),f.key+' copied from this Mac');
+  assert.equal(h.calls.length,0,'no download, no generation');assert.equal(h.sql.prepare('SELECT count(*) n FROM jobs').get().n,0);
+  // Re-saved (same picture, other bytes): the print is enough.
+  h.insert(space('resaved',{stage:'branch',original:'resaved/uploads/original-'+'e'.repeat(64)+'.png'}));
+  assert.equal((await post({action:'set-print',id:'resaved',print:'a3aba3177be6031d'})).data.room.preset,'bedroom');
+  // A space the person named keeps its name; any other photo is not the sample room.
+  h.insert(space('named',{name:'演示',stage:'branch',original:`named/uploads/original-${DEMO_SHA}.png`}));
+  assert.equal((await post({action:'set-print',id:'named',print:'a3aba3177be6031f'})).data.name,'演示');
+  h.insert(space('other',{stage:'branch',original:'other/uploads/original-'+'f'.repeat(64)+'.png'}));
+  const o=(await post({action:'set-print',id:'other',print:'b3bbb3b3991c1f3f'})).data;
+  assert.equal(o.room,undefined);assert.equal(o.demo,false);assert.equal(o.stage,'branch');
+});
+await test('without a copy on this Mac, the sample room files come from Marble\'s public CDN, once',async()=>{
+  h.handler=url=>{assert.match(url,/^https:\/\/cdn\.marble\.worldlabs\.ai\/(dbf9b812|3d1295b4)-/);return new Response(spz())};
+  assert.deepEqual((await post({action:'prepare-demo'})).data,{ready:true,copied:4});
+  assert.equal(h.calls.length,4);
+  assert.deepEqual((await post({action:'prepare-demo'})).data,{ready:true,copied:0});assert.equal(h.calls.length,4,'not downloaded again');
+});
+await test('the sample room files belong to no space: readable always, never deleted with a space',async()=>{
+  localDemoFiles();
+  h.insert(space('fresh',{stage:'branch',original:`fresh/uploads/original-${DEMO_SHA}.png`}));
+  await post({action:'set-print',id:'fresh',print:'a3aba3177be6031f'});
+  assert.equal((await post({action:'delete-project',id:'fresh'})).status,200);
+  for(const f of demo.files)assert(h.objects.has(f.key),f.key+' stays');
+  assert.equal(await asset('presets/bedroom/room.spz'),200);
+});
+await test('the bed photo of the sample room brings its model back in place at once, without a job or credits',async()=>{
+  localDemoFiles();
+  h.insert(space('fresh',{stage:'branch',original:`fresh/uploads/original-${DEMO_SHA}.png`}));
+  await post({action:'set-print',id:'fresh',print:'a3aba3177be6031f'});
+  h.file(`fresh/uploads/furniture-photo-${BED_SHA}.png`);
+  const bed=demo.furniture[0];
+  const r=(await post({action:'edit-furniture',id:'fresh',photo:`fresh/uploads/furniture-photo-${BED_SHA}.png`,name:'床',kind:'bed',dims:bed.dims,erase:bed.erase})).data;
+  const item=r.items[0];
+  assert.equal(r.reused,true);assert.match(r.note,/未消耗积分/);
+  assert.equal(item.status,'placed');assert.equal(item.model,'/demo/bed.glb');
+  assert.deepEqual(item.position,[bed.placed.position[0],-1.23,bed.placed.position[2]]);assert.equal(item.rotation,bed.placed.rotation);
+  assert.equal(r.room.erasures.length,1);
+  assert.equal(h.sql.prepare('SELECT count(*) n FROM jobs').get().n,0,'no job, nothing reserved');assert.equal(h.calls.length,0);
+  // Asked in English, the note is English.
+  h.file('fresh/uploads/furniture-photo-'+BED_SHA+'.png');
+  const en=(await postAs('en',{action:'edit-furniture',id:'fresh',photo:`fresh/uploads/furniture-photo-${BED_SHA}.png`,name:'Bed',kind:'bed',dims:bed.dims,erase:{...bed.erase,center:[1,-0.75,-2]}})).data;
+  assert.match(en.note,/No credits spent/);
+  const moved=en.items.find(i=>i.name==='Bed');
+  assert.deepEqual(moved.position,[1,-1.23,-2],'a box moved elsewhere puts the piece at the box');
+  assert(Math.abs(moved.rotation-bed.placed.rotation)<1e-9);
+});
+await test('a photo already made into 3D in another space is reused; a new photo is generated',async()=>{
+  const X='a'.repeat(64);
+  h.insert(space('old',{room:room('old'),items:[{id:'chair',name:'椅子',kind:'chair',status:'placed',position:[0,0,0],rotation:0,scale:1,height:.8,model:'old/models/chair.lite.glb',thumbnail:'old/models/chair.png'}]}));
+  h.file('old/models/chair.lite.glb','model/gltf-binary');
+  h.sql.prepare("INSERT INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated) VALUES('j','old','local-preview','furniture','chair','done',?,1,0,0,30)").run(JSON.stringify({image:`old/uploads/furniture-photo-${X}.png`}));
+  h.insert(space('p',{room:room('p')}));
+  h.file(`p/uploads/furniture-photo-${X}.png`);h.file('p/uploads/furniture-photo-'+'b'.repeat(64)+'.png');
+  const r=(await post({action:'edit-furniture',id:'p',photo:`p/uploads/furniture-photo-${X}.png`,name:'椅子',kind:'chair',dims:{w:45,d:50,h:80},erase})).data;
+  assert.equal(r.items[0].model,'old/models/chair.lite.glb');assert.equal(r.items[0].status,'placed');
+  assert.equal(r.items[0].rotation,erase.rotation);
+  assert.equal(await asset('old/models/chair.lite.glb'),200,'readable from the space that reuses it');
+  const g=(await post({action:'edit-furniture',id:'p',photo:'p/uploads/furniture-photo-'+'b'.repeat(64)+'.png',name:'书桌',kind:'desk',dims:{w:120,d:60,h:75},erase})).data;
+  assert.equal(g.items[1].status,'queued');assert.equal(h.sql.prepare("SELECT count(*) n FROM jobs WHERE status='queued'").get().n,1);
+  // Gone from storage (its space deleted): generated again rather than pointing at nothing.
+  h.objects.delete('old/models/chair.lite.glb');
+  const again=(await post({action:'edit-furniture',id:'p',photo:`p/uploads/furniture-photo-${X}.png`,name:'椅子',kind:'chair',dims:{w:45,d:50,h:80},erase})).data;
+  assert.equal(again.items[2].status,'queued');
+});
+await test('errors come back in English when the page is in English',async()=>{
+  h.insert(space('p'));
+  const r=await postAs('en',{action:'rename',id:'p',name:'  '});
+  assert.equal(r.status,400);assert.equal(r.data.error,"The name can't be empty.");
+  assert.equal((await postAs('zh',{action:'rename',id:'p',name:''})).data.error,'名称不能为空。');
+  assert.equal((await postAs('en',{action:'nope',id:'p'})).data.error,'Unknown action.');
+  assert.match((await postAs('en',{action:'rename',id:'missing',name:'x'})).data.error,/doesn't exist/);
 });
 console.log(`${tests} offline project tests passed; paid API calls: 0`);

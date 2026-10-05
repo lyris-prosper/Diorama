@@ -9,6 +9,8 @@ export class ProviderError extends Error {
   terminal = false;
   taskStatus?: string;
   credits?: number;
+  /** The message in English (`message` is Chinese). */
+  en?: string;
   constructor(message: string, options: Partial<ProviderError> & { category: ErrorCategory }) {
     super(message);
     Object.assign(this, options);
@@ -17,8 +19,8 @@ export class ProviderError extends Error {
 }
 export function safeText(value: unknown, secrets: string[] = []) {
   let text = typeof value === "string" ? value : JSON.stringify(value ?? "");
-  for (const secret of secrets.filter(Boolean)) text = text.split(secret).join("[已隐藏]");
-  return text.replace(/Bearer\s+\S+/gi, "Bearer [已隐藏]").slice(0, 700);
+  for (const secret of secrets.filter(Boolean)) text = text.split(secret).join("[hidden]");
+  return text.replace(/Bearer\s+\S+/gi, "Bearer [hidden]").slice(0, 700);
 }
 export function failure(provider: string, status: number, body: any, requestId?: string, secrets: string[] = []) {
   const code = body?.code;
@@ -27,9 +29,11 @@ export function failure(provider: string, status: number, body: any, requestId?:
     : [400, 422].includes(status) || [1004, 2002, 2003, 2004, 2008, 2015].includes(Number(code)) ? "parameters"
     : "provider";
   const labels = {auth:"密钥无效或未获授权",balance:"余额不足",parameters:"参数或输入图片错误",provider:"服务商错误",timeout:"请求超时",network:"网络连接失败"};
+  const labelsEn = {auth:"key invalid or not authorised",balance:"not enough credits",parameters:"bad parameters or input image",provider:"provider error",timeout:"request timed out",network:"network connection failed"};
   const detail = safeText(body?.message ?? body?.detail ?? body?.error?.message ?? `HTTP ${status}`, secrets);
   const id = safeText(requestId || body?.request_id || "", secrets);
   return new ProviderError(`${provider}：${labels[category]}。${detail}${id ? `（请求编号：${id}）` : ""}`, {
+    en: `${provider}: ${labelsEn[category]}. ${detail}${id ? ` (request ${id})` : ""}`,
     category, code, requestId: id || undefined,
     retryable: status === 429 || status >= 500 || Number(code) === 2000,
   });
@@ -54,6 +58,7 @@ export async function providerJSON(url: string, init: RequestInit = {}, paid = f
           throw e;
         }
         throw new ProviderError(`${provider}：服务商返回了无法解析的结果。${id ? `（请求编号：${safeText(id, secrets)}）` : ""}`, {
+          en: `${provider}: the reply could not be read.${id ? ` (request ${safeText(id, secrets)})` : ""}`,
           category: "provider", requestId: id, uncertain: paid && (response.ok || response.status >= 500 || response.status === 408),
           retryable: response.ok || response.status >= 500 || response.status === 429,
         });
@@ -65,7 +70,9 @@ export async function providerJSON(url: string, init: RequestInit = {}, paid = f
       }
       return body;
     } catch (e) {
-      error = e instanceof ProviderError ? e : new ProviderError(`${provider}：${(e as Error).name === "TimeoutError" || (e as Error).name === "AbortError" ? "请求超时" : "网络连接失败"}。`, {
+      const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError";
+      error = e instanceof ProviderError ? e : new ProviderError(`${provider}：${timedOut ? "请求超时" : "网络连接失败"}。`, {
+        en: `${provider}: ${timedOut ? "request timed out" : "network connection failed"}.`,
         category: ["TimeoutError", "AbortError"].includes((e as Error).name) ? "timeout" : "network",
         retryable: true, uncertain: paid,
       });
@@ -73,7 +80,7 @@ export async function providerJSON(url: string, init: RequestInit = {}, paid = f
     if (!error.retryable || attempt + 1 === maxAttempts) throw error;
     await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
   }
-  throw Error("查询未完成");
+  throw new ProviderError("查询未完成", { en: "The check did not finish.", category: "network" });
 }
 export function creditNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;

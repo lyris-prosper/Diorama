@@ -3,6 +3,7 @@ import { startWorld, startTripo, pollWorld, pollTripo } from "./providers";
 import { ProviderError, billing } from "./provider-http";
 import { estimate, budgetLimit, BUDGET_USED_SQL, settle } from "./job-budget";
 import type { Project } from "../types";
+import { say, both } from "./say";
 export async function enqueue(p: Project, user: string, kind: string, target: string, payload: any) {
   const { db } = bindings();
   const id = `${p.id}-${kind}-${target}`;
@@ -10,27 +11,27 @@ export async function enqueue(p: Project, user: string, kind: string, target: st
   await db.prepare(`INSERT OR IGNORE INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated)
     SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${BUDGET_USED_SQL} + ? <= ?`)
     .bind(id,p.id,user,kind,target,"queued",JSON.stringify(payload),1,Date.now(),cost,cost,kind,kind,cost,budgetLimit(kind)).run();
-  if (!(await db.prepare("SELECT id FROM jobs WHERE id=? AND owner=?").bind(id,user).first())) throw Error("已达到本地生成预算上限；这不是服务商余额不足。");
+  if (!(await db.prepare("SELECT id FROM jobs WHERE id=? AND owner=?").bind(id,user).first())) throw say("已达到本地生成预算上限；这不是服务商余额不足。", "The local generation budget is used up (this is not the provider's balance).");
 }
 export async function retryJob(id: string, project: string, user: string, confirmPaid = false) {
   const { db } = bindings();
   const j = await db.prepare("SELECT * FROM jobs WHERE id=? AND project=? AND owner=?").bind(id,project,user).first<any>();
-  if (!j || !["failed","paused","uncertain"].includes(j.status)) throw Error("此任务当前不能重试。");
+  if (!j || !["failed","paused","uncertain"].includes(j.status)) throw say("此任务当前不能重试。", "This job can't be retried now.");
   const result = j.result ? JSON.parse(j.result) : {};
   if (j.provider && !result.terminal) {
     await db.prepare("UPDATE jobs SET status='running',error=NULL,poll_started=?,next_poll=0,poll_failures=0,updated=? WHERE id=? AND status=?")
       .bind(Date.now(),Date.now(),j.id,j.status).run();
     return;
   }
-  if (j.status === "uncertain" || (!j.provider && !result.definiteRejection)) throw Error("待核对：无法确认任务是否已创建，禁止再次提交；请核对服务商任务记录。");
-  if (!confirmPaid) throw Error(`重新生成预计消耗 ${estimate(j.kind)} 积分，请明确确认后再提交。`);
-  if (j.attempt >= 3) throw Error("已达到 3 次提交上限，请先检查输入或服务商原因。");
+  if (j.status === "uncertain" || (!j.provider && !result.definiteRejection)) throw say("待核对：无法确认任务是否已创建，禁止再次提交；请核对服务商任务记录。", "Needs checking: it isn't certain whether the job was created, so it can't be submitted again. Check the provider's job list.");
+  if (!confirmPaid) throw say(`重新生成预计消耗 ${estimate(j.kind)} 积分，请明确确认后再提交。`, `Generating again costs about ${estimate(j.kind)} credits. Confirm before submitting.`);
+  if (j.attempt >= 3) throw say("已达到 3 次提交上限，请先检查输入或服务商原因。", "This job has been submitted 3 times, the limit. Check the input or the provider first.");
   const cost = estimate(j.kind);
   const r = await db.prepare(`UPDATE jobs SET status='queued',provider=NULL,attempt=attempt+1,error=NULL,result=NULL,
     updated=?,reserved=?,estimated=?,actual_credits=NULL,billing_details=NULL,settled=0,poll_started=NULL,next_poll=0,poll_failures=0
     WHERE id=? AND status=? AND attempt=? AND ${BUDGET_USED_SQL} + ? <= ?`)
     .bind(Date.now(),cost,cost,j.id,j.status,j.attempt,j.kind,j.kind,cost,budgetLimit(j.kind)).run();
-  if (!r.meta.changes) throw Error("任务状态已变更或重新生成将超出本地预算上限。");
+  if (!r.meta.changes) throw say("任务状态已变更或重新生成将超出本地预算上限。", "The job changed meanwhile, or generating again would exceed the local budget.");
 }
 export async function tick(id: string, user: string) {
   const { db } = bindings();
@@ -38,8 +39,8 @@ export async function tick(id: string, user: string) {
     .bind(id,user).all<any>();
   for (const j of rows.results) {
     if (j.status === "submitting") {
-      if (Date.now() - j.updated > 120000) await db.prepare("UPDATE jobs SET status='uncertain',error=?,updated=? WHERE id=? AND status='submitting'")
-        .bind("待核对：提交结果尚未确认。为避免重复扣费，已停止自动提交。",Date.now(),j.id).run();
+      if (Date.now() - j.updated > 120000) await db.prepare("UPDATE jobs SET status='uncertain',error=?,result=json_set(COALESCE(result,'{}'),'$.errorEn',?),updated=? WHERE id=? AND status='submitting'")
+        .bind("待核对：提交结果尚未确认。为避免重复扣费，已停止自动提交。","Needs checking: the submission wasn't confirmed. To avoid paying twice, it won't be submitted automatically.",Date.now(),j.id).run();
       continue;
     }
     if (j.status === "queued") {
@@ -55,7 +56,9 @@ export async function tick(id: string, user: string) {
       } catch (e) {
         const err = e as ProviderError;
         const uncertain = !!provider || !!err.uncertain;
-        const result = { definiteRejection: !uncertain, terminal: false, category: err.category, requestId: err.requestId, code: err.code };
+        const said = both(err);
+        const result = { definiteRejection: !uncertain, terminal: false, category: err.category, requestId: err.requestId, code: err.code,
+          errorEn: said.en + (uncertain ? " Needs checking: it won't be resubmitted automatically." : " No generation job was created.") };
         await db.prepare("UPDATE jobs SET status=?,provider=?,error=?,result=?,reserved=CASE WHEN ? THEN reserved ELSE 0 END,updated=? WHERE id=? AND status='submitting'")
           .bind(uncertain ? "uncertain" : "failed",provider || null,
             err.message + (uncertain ? " 待核对：不会自动重新提交。" : " 尚未创建生成任务。"),JSON.stringify(result),uncertain ? 1 : 0,Date.now(),j.id).run();
@@ -64,8 +67,8 @@ export async function tick(id: string, user: string) {
     }
     if (j.next_poll > Date.now()) continue;
     if (Date.now() - (j.poll_started || j.updated) > (j.kind === "world" ? 10 : 5) * 60000) {
-      await db.prepare("UPDATE jobs SET status='paused',error=?,updated=? WHERE id=? AND status='running'")
-        .bind("等待超时：任务编号已保留。可继续查询原任务，不会重新生成或再次提交。",Date.now(),j.id).run();
+      await db.prepare("UPDATE jobs SET status='paused',error=?,result=json_set(COALESCE(result,'{}'),'$.errorEn',?),updated=? WHERE id=? AND status='running'")
+        .bind("等待超时：任务编号已保留。可继续查询原任务，不会重新生成或再次提交。","Timed out waiting. The job number is kept: keep checking the original job; nothing is generated or submitted again.",Date.now(),j.id).run();
       continue;
     }
     // A short lease prevents overlapping browser ticks from downloading/saving twice.
@@ -83,7 +86,7 @@ export async function tick(id: string, user: string) {
       const p = await getProject(id,user);
       if (j.kind === "world") {
         const a = out.assets;
-        if (!a?.splats?.spz_urls) throw Error("服务没有返回可加载的空间资产。");
+        if (!a?.splats?.spz_urls) throw say("服务没有返回可加载的空间资产。", "The provider returned no room files that can be loaded.");
         const splat = await cacheRemote(
           a.splats.spz_urls["500k"] || a.splats.spz_urls.full_res || a.splats.spz_urls["100k"],
           `${p.id}/room/scene.spz`, "spz",
@@ -134,7 +137,8 @@ export async function tick(id: string, user: string) {
       if (terminal && !j.settled) await settle(j,err.taskStatus || "failed",err.credits ?? null,{status:err.taskStatus,code:err.code,requestId:err.requestId});
       await db.prepare("UPDATE jobs SET status=?,error=?,result=?,updated=?,next_poll=0,poll_failures=poll_failures+1 WHERE id=?")
         .bind(terminal ? "failed" : "paused",err.message + (terminal ? "" : " 已暂停自动查询，可继续查询原任务；不会重新提交。"),
-          JSON.stringify({terminal,category:err.category,requestId:err.requestId,code:err.code,providerStatus:err.taskStatus}),Date.now(),j.id).run();
+          JSON.stringify({terminal,category:err.category,requestId:err.requestId,code:err.code,providerStatus:err.taskStatus,
+            errorEn:both(err).en + (terminal ? "" : " Automatic checking paused: you can keep checking the original job; it won't be resubmitted.")}),Date.now(),j.id).run();
     }
   }
   return getProject(id,user);

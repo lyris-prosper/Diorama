@@ -1,12 +1,13 @@
 import { bindings, bytes } from "./storage";
 import { ProviderError, providerJSON as json, safeText, creditNumber, TRIPO_SETTINGS } from "./provider-http";
 import { roomCategories as categories } from "../furniture-kinds";
+import { say } from "./say";
 export { categories };
 const W = "https://api.worldlabs.ai/marble/v1";
 const T = "https://openapi.tripo3d.ai/v3";
 function key(name: string) {
   const v = bindings().secrets[name] || process.env[name];
-  if (!v) throw new ProviderError(`密钥未配置：${name}，不会启动付费生成。`, { category: "auth" });
+  if (!v) throw new ProviderError(`密钥未配置：${name}，不会启动付费生成。`, { en: `No key set for ${name}, so no paid generation starts.`, category: "auth" });
   return v;
 }
 export async function balances() {
@@ -20,19 +21,19 @@ export async function balances() {
         headers: { [header]: name === "world" ? key(k) : `Bearer ${key(k)}` },
       });
     } catch (e) {
-      result[name] = { error: (e as Error).message, category: (e as ProviderError).category, requestId: (e as ProviderError).requestId };
+      result[name] = { error: (e as Error).message, errorEn: (e as ProviderError).en ?? (e as Error).message, category: (e as ProviderError).category, requestId: (e as ProviderError).requestId };
     }
   }));
   return result;
 }
 function requiredId(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) throw new ProviderError("服务商未返回任务编号，任务是否创建需要核对；不会自动重新提交。", { category: "provider", uncertain: true });
+  if (typeof value !== "string" || !value.trim()) throw new ProviderError("服务商未返回任务编号，任务是否创建需要核对；不会自动重新提交。", { en: "The provider returned no job number, so whether a job was created needs checking. It will not be resubmitted.", category: "provider", uncertain: true });
   return value;
 }
 export async function startWorld(image: string) {
   const data = await bytes(image);
   if (!data.buffer.byteLength || data.buffer.byteLength > 10 * 1024 * 1024 || !["image/png", "image/jpeg", "image/webp"].includes(data.type))
-    throw new ProviderError("参数错误：房间图片须为不超过 10 MB 的 PNG、JPEG 或 WebP。", { category: "parameters" });
+    throw new ProviderError("参数错误：房间图片须为不超过 10 MB 的 PNG、JPEG 或 WebP。", { en: "The room photo must be a PNG, JPEG or WebP of 10 MB or less.", category: "parameters" });
   const j = await json(W + "/worlds:generate", {
     method: "POST",
     headers: { "WLT-Api-Key": key("WORLDLABS_API_KEY"), "Content-Type": "application/json" },
@@ -52,11 +53,12 @@ export async function pollWorld(id: string) {
   const k = key("WORLDLABS_API_KEY");
   const j = await json(W + "/operations/" + encodeURIComponent(id), { headers: { "WLT-Api-Key": k } });
   if (j.done && j.error) throw new ProviderError(`World Labs：服务商生成失败。${safeText(j.error.message, [k])}${j.request_id ? `（请求编号：${safeText(j.request_id, [k])}）` : ""}`, {
+    en: `World Labs: generation failed. ${safeText(j.error.message, [k])}${j.request_id ? ` (request ${safeText(j.request_id, [k])})` : ""}`,
     category: "provider", terminal: true, taskStatus: "failed", code: j.error.code,
     requestId: j.request_id, credits: creditNumber(j.cost?.total_credits) ?? undefined,
   });
   if (!j.done) return null;
-  if (!j.response?.world_id) throw new ProviderError("World Labs：生成结果缺少房间编号，可继续查询原任务。", { category: "provider" });
+  if (!j.response?.world_id) throw new ProviderError("World Labs：生成结果缺少房间编号，可继续查询原任务。", { en: "World Labs: the result has no world ID. You can keep checking the original job.", category: "provider" });
   const w = j.response.assets ? j.response : await json(W + "/worlds/" + encodeURIComponent(j.response.world_id), { headers: { "WLT-Api-Key": k } });
   return { ...w, cost: j.cost };
 }
@@ -95,12 +97,12 @@ export function parseMarbleSource(input: string) {
 export async function startTripo(image: string) {
   const b = await bytes(image);
   if (!b.buffer.byteLength || b.buffer.byteLength > 20 * 1024 * 1024 || !["image/png", "image/jpeg"].includes(b.type))
-    throw new ProviderError("参数错误：家具图片须为不超过 20 MB 的 PNG 或 JPEG。", { category: "parameters" });
+    throw new ProviderError("参数错误：家具图片须为不超过 20 MB 的 PNG 或 JPEG。", { en: "The furniture photo must be a PNG or JPEG of 20 MB or less.", category: "parameters" });
   const form = new FormData();
   form.append("file", new Blob([b.buffer], { type: b.type }), b.type === "image/jpeg" ? "furniture.jpg" : "furniture.png");
   const f = await json(T + "/files", { method: "POST", headers: { Authorization: `Bearer ${key("TRIPO_API_KEY")}` }, body: form });
   if (typeof f.data?.file_token !== "string" || !f.data.file_token)
-    throw new ProviderError("Tripo：上传结果缺少图片编号，尚未提交付费生成。", { category: "provider" });
+    throw new ProviderError("Tripo：上传结果缺少图片编号，尚未提交付费生成。", { en: "Tripo: the upload returned no image token. Nothing paid was submitted.", category: "provider" });
   const j = await json(T + "/generation/image-to-model", {
     method: "POST", headers: { Authorization: `Bearer ${key("TRIPO_API_KEY")}`, "Content-Type": "application/json" },
     body: JSON.stringify({ input: f.data.file_token, ...TRIPO_SETTINGS }),
@@ -110,25 +112,29 @@ export async function startTripo(image: string) {
 export async function pollTripo(id: string) {
   const k = key("TRIPO_API_KEY");
   const j = await json(T + "/tasks/" + encodeURIComponent(id), { headers: { Authorization: `Bearer ${k}` } });
-  if (!j.data?.status) throw new ProviderError("Tripo：查询结果缺少任务状态，可继续查询原任务。", { category: "provider" });
+  if (!j.data?.status) throw new ProviderError("Tripo：查询结果缺少任务状态，可继续查询原任务。", { en: "Tripo: the reply has no job status. You can keep checking the original job.", category: "provider" });
   if (["failed", "cancelled", "banned", "expired"].includes(j.data.status)) {
     const labels: Record<string, string> = { failed: "服务商生成失败", cancelled: "任务已取消", banned: "输入内容被服务商拒绝", expired: "任务或文件已过期" };
-    throw new ProviderError(`Tripo：${labels[j.data.status]}。${safeText(j.data.error_message || "", [k])}${j.request_id ? `（请求编号：${safeText(j.request_id, [k])}）` : ""}`, {
+    const labelsEn: Record<string, string> = { failed: "generation failed", cancelled: "the job was cancelled", banned: "the provider refused the input", expired: "the job or file expired" };
+    const detail = safeText(j.data.error_message || "", [k]), rid = j.request_id ? safeText(j.request_id, [k]) : "";
+    throw new ProviderError(`Tripo：${labels[j.data.status]}。${detail}${rid ? `（请求编号：${rid}）` : ""}`, {
+      en: `Tripo: ${labelsEn[j.data.status]}. ${detail}${rid ? ` (request ${rid})` : ""}`,
       category: j.data.status === "banned" ? "parameters" : "provider", terminal: true,
       taskStatus: j.data.status, code: j.data.error_code, requestId: j.request_id,
       credits: creditNumber(j.data.credits_consumed) ?? (["failed", "cancelled"].includes(j.data.status) ? 0 : undefined),
     });
   }
-  if (!["queued", "running", "success"].includes(j.data.status)) throw new ProviderError("Tripo：未知任务状态，已保留任务编号，请稍后继续查询。", { category: "provider" });
+  if (!["queued", "running", "success"].includes(j.data.status)) throw new ProviderError("Tripo：未知任务状态，已保留任务编号，请稍后继续查询。", { en: "Tripo: unknown job status. The job number is kept; check again later.", category: "provider" });
   return j.data.status === "success" ? j.data : null;
 }
 export function parseIntent(s: string) {
-  if (!s.trim()) throw Error("请填写具体家具，或选择无需处理。");
+  if (!s.trim()) throw say("请填写具体家具，或选择无需处理。", "Name the furniture, or choose to leave it as it is.");
   const all = /全部|所有|all/i.test(s);
   const chosen = categories.filter((c) => all || c.pattern.test(s));
   if (!chosen.length)
-    throw Error(
+    throw say(
       "未理解要处理的家具。请写明床、书桌、柜子、椅子或沙发，也可以手动圈选。",
+      "Couldn't tell which furniture you mean. Name a bed, desk, cabinet, chair or sofa, or outline it by hand.",
     );
   return chosen;
 }

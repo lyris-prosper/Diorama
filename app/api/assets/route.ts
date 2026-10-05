@@ -11,6 +11,8 @@ export async function GET(req: Request) {
     // uses it: a room reused through the photo fingerprint stays in the folder of the space that
     // first made it, which may since have been deleted.
     const allowed =
+      // The sample room's files (lib/demo-room.ts) belong to no space.
+      key.startsWith("presets/") ||
       (await db.prepare("SELECT id FROM projects WHERE id=? AND owner=?").bind(project, user).first()) ||
       (await db.prepare("SELECT id FROM projects WHERE owner=? AND instr(data, ?) > 0 LIMIT 1").bind(user, JSON.stringify(key)).first());
     if (!allowed) return new Response("Not found", { status: 404 });

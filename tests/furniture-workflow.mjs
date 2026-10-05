@@ -135,6 +135,24 @@ await test('add-furniture refuses a batch beyond the budget or the balance, and 
   assert.equal(paidPosts(),0);
 });
 
+await test('add-furniture reuses a model already made from the same photo; only the rest is generated',async()=>{
+  reset(fixture({stage:'ready',room:{splat:'p/room/s.spz',scale:1,offset:0}}));
+  // The sample bedroom's bed photo, by its bytes (the SHA-256 in the upload key).
+  const BED='457bfcbece19b66ff3a46f73dd188b8cecfbf979d36b55f49fd8ff0d52c0134e';
+  png(`p/uploads/add-furniture-${BED}.png`);
+  const bed={name:'床',kind:'bed',dims:{w:150,d:200,h:80},image:`p/uploads/add-furniture-${BED}.png`};
+  // All of the batch reused: no balance check, no job, no call.
+  const only=await post({action:'add-furniture',id:'p',furniture:[bed],approved:true});
+  assert.equal(only.status,200,JSON.stringify(only.data));assert.match(only.data.note,/未消耗积分/);
+  const b=only.data.items.find(i=>i.id===only.data.added[0]);
+  assert.equal(b.status,'ready');assert.equal(b.model,'/demo/bed.glb');assert.equal(jobs().length,0);assert.equal(calls.length,0);
+  // Mixed: the reused one is free, the new one is reserved and queued.
+  handler=balanceHandler(1000);
+  const mixed=await post({action:'add-furniture',id:'p',furniture:[bed,...piece(1)],approved:true});
+  assert.equal(mixed.status,200,JSON.stringify(mixed.data));assert.equal(mixed.data.added.length,2);
+  assert.equal(jobs().length,1);assert.equal(jobs()[0].reserved,30);
+});
+
 await test('add-furniture is unavailable in the demo room',async()=>{
   reset(fixture({mode:'demo',stage:'ready'}));
   await rejects({action:'add-furniture',id:'p',furniture:piece(1),approved:true},/示例房间/);

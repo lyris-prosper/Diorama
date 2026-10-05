@@ -39,7 +39,7 @@ export function harness(){
     const sandbox={Buffer,Blob,FormData,Headers,Response,Request,AbortSignal,URL,DOMException,crypto,console,structuredClone,process:{env:{NODE_ENV:'development'}},setTimeout:(f)=>queueMicrotask(f),
       fetch:async(url,init={})=>{h.calls.push({url,init});if(!h.handler)throw Error('Network disabled');return h.handler(url,init)}};
     const fn=vm.runInNewContext(`(function(require,module,exports){${code}\n})`,sandbox,{filename:path});
-    fn(name=>name==='cloudflare:workers'?{env:h.env}:name==='@fal-ai/client'?{createFalClient:()=>{throw Error('fal.ai is not used')}}:load(locate(path,name)),mod,mod.exports);
+    fn(name=>name==='cloudflare:workers'?{env:h.env}:load(locate(path,name)),mod,mod.exports);
     return mod.exports;
   };
   /** Empty database with the app's migrations, no files, no network. */

@@ -1,7 +1,7 @@
 import { bindings, owner } from "@/lib/server/storage";
 export async function GET(req: Request) {
   try {
-    const user = owner(req);
+    const user = owner();
     const query = new URL(req.url).searchParams;
     const key = query.get("key") || "";
     const download = query.get("download");

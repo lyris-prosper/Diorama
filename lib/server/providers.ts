@@ -1,5 +1,4 @@
-import { createFalClient } from "@fal-ai/client";
-import { bindings, bytes, dataURI } from "./storage";
+import { bindings, bytes } from "./storage";
 import { ProviderError, providerJSON as json, safeText, creditNumber, TRIPO_SETTINGS } from "./provider-http";
 import { roomCategories as categories } from "../furniture-kinds";
 export { categories };
@@ -24,7 +23,6 @@ export async function balances() {
       result[name] = { error: (e as Error).message, category: (e as ProviderError).category, requestId: (e as ProviderError).requestId };
     }
   }));
-  result.image = !!(bindings().secrets.FAL_KEY || process.env.FAL_KEY);
   return result;
 }
 function requiredId(value: unknown) {
@@ -123,37 +121,6 @@ export async function pollTripo(id: string) {
   }
   if (!["queued", "running", "success"].includes(j.data.status)) throw new ProviderError("Tripo：未知任务状态，已保留任务编号，请稍后继续查询。", { category: "provider" });
   return j.data.status === "success" ? j.data : null;
-}
-export const fal = () => createFalClient({ credentials: key("FAL_KEY") });
-export const FAL_SEG = "fal-ai/sam-3/image";
-export const FAL_ERASE = "fal-ai/bria/eraser";
-export async function startImage(kind: string, payload: any) {
-  return (
-    await fal().queue.submit(kind === "detect" ? FAL_SEG : FAL_ERASE, {
-      input:
-        kind === "detect"
-          ? {
-              image_url: await dataURI(payload.image),
-              prompt: payload.prompt,
-              apply_mask: false,
-              return_multiple_masks: true,
-              max_masks: 8,
-              include_scores: true,
-              include_boxes: true,
-            }
-          : {
-              image_url: await dataURI(payload.image),
-              mask_url: await dataURI(payload.mask),
-              mask_type: "manual",
-            },
-    })
-  ).request_id;
-}
-export async function pollImage(kind: string, id: string) {
-  const model = kind === "detect" ? FAL_SEG : FAL_ERASE;
-  const q = await fal().queue.status(model, { requestId: id, logs: false });
-  if (q.status !== "COMPLETED") return null;
-  return (await fal().queue.result(model, { requestId: id })).data as any;
 }
 export function parseIntent(s: string) {
   if (!s.trim()) throw Error("请填写具体家具，或选择无需处理。");

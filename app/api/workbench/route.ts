@@ -26,9 +26,10 @@ async function downloadMarble(projectId: string, source: string) {
 }
 export async function GET(req: Request) {
   try {
-    const user = owner(req);
+    const user = owner();
     const q = new URL(req.url).searchParams;
-    if (q.has("capabilities")) return Response.json({ localRecognition: true, imageRepair: !!(bindings().secrets.FAL_KEY || process.env.FAL_KEY), world: !!(bindings().secrets.WORLDLABS_API_KEY || process.env.WORLDLABS_API_KEY), furniture: !!(bindings().secrets.TRIPO_API_KEY || process.env.TRIPO_API_KEY) });
+    // Which paid services have a key in .dev.vars (recognition and repair run on this machine).
+    if (q.has("capabilities")) return Response.json({ world: !!(bindings().secrets.WORLDLABS_API_KEY || process.env.WORLDLABS_API_KEY), furniture: !!(bindings().secrets.TRIPO_API_KEY || process.env.TRIPO_API_KEY) });
     if (q.has("budgets")) return Response.json({world: await budgetSummary("world"), furniture: await budgetSummary("furniture")});
     if (q.has("services")) return Response.json(await balances());
     if (q.has("id")) return Response.json(await getProject(q.get("id")!, user));
@@ -67,7 +68,7 @@ export async function GET(req: Request) {
 }
 export async function POST(req: Request) {
   try {
-    const user = owner(req);
+    const user = owner();
     const origin = req.headers.get("origin");
     if (origin && new URL(origin).host !== new URL(req.url).host)
       throw Error("请求来源不被允许。");
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
       return Response.json({ key, project: p });
     }
     const b = (await req.json()) as any;
-    const { db, secrets } = bindings();
+    const { db } = bindings();
     if (b.action === "create") {
       // One example room per person: “看示例房间” opens the same one again, with its arrangement.
       if (b.mode === "demo") {
@@ -397,38 +398,6 @@ export async function POST(req: Request) {
       p.stage="confirm";
       return Response.json(await saveProject(p,user));
     }
-    if (b.action === "detect") {
-      if (p.mode === "demo") throw Error("示例模式不进行图片识别。");
-      if (!p.original) throw Error("请先上传照片。");
-      const cats = parseIntent(b.intent);
-      if (!(secrets.FAL_KEY || process.env.FAL_KEY))
-        throw Error(
-          "识别服务尚未配置：需要后端 FAL_KEY。可先使用手动圈选，或体验示例房间；没有启动付费任务。",
-        );
-      if (
-        await db
-          .prepare(
-            "SELECT id FROM jobs WHERE project=? AND status IN ('running','queued','submitting')",
-          )
-          .bind(p.id)
-          .first()
-      )
-        throw Error("请等待当前任务结束。");
-      p.branch = b.branch === "remove" ? "remove" : "edit";
-      p.intent = String(b.intent).slice(0, 500);
-      p.candidates = [];
-      p.stage = "detecting";
-      await saveProject(p, user);
-      for (const c of cats)
-        await enqueue(
-          p,
-          user,
-          "detect",
-          c.kind + "-" + crypto.randomUUID().slice(0, 8),
-          { image: p.original, ...c },
-        );
-      return Response.json(await getProject(p.id, user));
-    }
     if (b.action === "manual") {
       if (!p.original || !b.mask?.startsWith(p.id + "/uploads/"))
         throw Error("请先圈选对象。");
@@ -452,11 +421,8 @@ export async function POST(req: Request) {
     if (b.action === "prepare") {
       if (p.mode !== "real" || !["remove", "edit"].includes(p.branch))
         throw Error("无效流程。");
-      const localPrepared = typeof b.localBackground === "string" && ["localhost","127.0.0.1"].includes(new URL(req.url).hostname);
-      if (!localPrepared && !(secrets.FAL_KEY || process.env.FAL_KEY))
-        throw Error(
-          "背景修复服务尚未配置：需要后端 FAL_KEY。原图与选择已保留，未调用 World Labs 或 Tripo。",
-        );
+      // The background is repaired on this machine (LaMa, build/local-vision-plugin.mjs) before this call.
+      if (typeof b.localBackground !== "string") throw Error("请先在本机完成背景修复。");
       if (b.original && b.original !== p.original) throw Error("照片已更换，请重新处理。");
       if (!["confirm","branch","review"].includes(p.stage)) throw Error("当前阶段无法重新处理图片。");
       const selected = p.candidates.filter((c) => b.selected?.includes(c.id));
@@ -464,22 +430,12 @@ export async function POST(req: Request) {
       if (!b.mask?.startsWith(p.id + "/uploads/"))
         throw Error("缺少像素掩膜。");
       if (!(await bindings().bucket.head(b.mask))) throw Error("轮廓未保存，请重试。");
-      if(localPrepared && (!b.localBackground.startsWith(p.id + "/uploads/local-background-") || !(await bindings().bucket.head(b.localBackground))))
+      if (!b.localBackground.startsWith(p.id + "/uploads/local-background-") || !(await bindings().bucket.head(b.localBackground)))
         throw Error("本地修复图片无效。");
       p.candidates = p.candidates.map((c) => ({
         ...c,
         selected: b.selected.includes(c.id),
       }));
-      if (
-        p.mask === b.mask &&
-        p.rawBackground && !localPrepared &&
-        JSON.stringify(
-          p.candidates.filter((c) => c.selected).map((c) => c.id),
-        ) === JSON.stringify(b.selected)
-      ) {
-        p.stage = "review";
-        return Response.json(await saveProject(p, user));
-      }
       p.mask = b.mask;
       p.cutouts = {};
       p.originalCrops = {};
@@ -492,18 +448,9 @@ export async function POST(req: Request) {
           if (b.originalCrops?.[c.id]?.startsWith(p.id + "/uploads/"))
             p.originalCrops[c.id] = b.originalCrops[c.id];
         }
-      if(localPrepared){
-        p.rawBackground=b.localBackground;
-        p.stage="review";
-        return Response.json(await saveProject(p,user));
-      }
-      p.stage = "processing";
-      await saveProject(p, user);
-      await enqueue(p, user, "erase", p.mask!.split("-").pop()!.slice(0, 24), {
-        image: p.original,
-        mask: p.mask,
-      });
-      return Response.json(await getProject(p.id, user));
+      p.rawBackground = b.localBackground;
+      p.stage = "review";
+      return Response.json(await saveProject(p, user));
     }
     if (b.action === "generate") {
       if (!p.original) throw Error("请先上传房间照片。");

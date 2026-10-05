@@ -34,7 +34,7 @@ function load(path){
   const code=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,esModuleInterop:true,resolveJsonModule:true}}).outputText;
   const sandbox={Buffer,Blob,FormData,Headers,Response,Request,AbortSignal,URL,crypto,console,process:{env:{NODE_ENV:'development'}},setTimeout:(f)=>queueMicrotask(f),fetch:async(url,init={})=>{calls.push({url,init});if(!handler)throw Error('Network disabled');return handler(url,init)}};
   const fn=vm.runInNewContext(`(function(require,module,exports){${code}\n})`,sandbox,{filename:path});
-  fn(name=>name==='cloudflare:workers'?{env}:name==='@fal-ai/client'?{createFalClient:()=>{throw Error('FAL disabled in offline tests')}}:load(locate(path,name)),mod,mod.exports);
+  fn(name=>name==='cloudflare:workers'?{env}:load(locate(path,name)),mod,mod.exports);
   return mod.exports;
 }
 const route=load(root+'/app/api/workbench/route.ts');

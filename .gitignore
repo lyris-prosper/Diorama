@@ -38,11 +38,7 @@ yarn-error.log*
 next-env.d.ts
 /dist/
 /.wrangler/
-# Checkout-local execution profile and tool state; never publish them.
-/.sites-runtime/
-/.agents/
-/.codex/
-/outputs/
+# Output of tests/local-workflow.mjs and tests/recognition-smoke.mjs.
 /work/
 .dev.vars*
 !.env.example

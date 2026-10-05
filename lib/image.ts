@@ -103,35 +103,3 @@ export async function prepareImages(original: string, selected: Candidate[]) {
     for (let y = -4; y <= 4; y += 2) ex.drawImage(combined, x, y);
   return { mask: await blob(expanded), cuts, crops };
 }
-export async function preserveOutside(
-  original: string,
-  raw: string,
-  maskKey: string,
-) {
-  const [a, b, m] = await Promise.all([
-    loadImage(url(original)),
-    loadImage(url(raw)),
-    loadImage(url(maskKey)),
-  ]);
-  const c = canvas(a.width, a.height),
-    ctx = c.getContext("2d")!;
-  ctx.drawImage(a, 0, 0);
-  const ap = ctx.getImageData(0, 0, c.width, c.height);
-  ctx.drawImage(b, 0, 0, c.width, c.height);
-  const bp = ctx.getImageData(0, 0, c.width, c.height);
-  ctx.drawImage(m, 0, 0, c.width, c.height);
-  const mp = ctx.getImageData(0, 0, c.width, c.height);
-  let change = 0,
-    n = 0;
-  for (let i = 0; i < ap.data.length; i += 4) {
-    if (mp.data[i] > 127) {
-      for (let j = 0; j < 3; j++) ap.data[i + j] = bp.data[i + j];
-    } else {
-      for (let j = 0; j < 3; j++)
-        change += Math.abs(ap.data[i + j] - bp.data[i + j]);
-      n += 3;
-    }
-  }
-  ctx.putImageData(ap, 0, 0);
-  return { blob: await blob(c), outsideDifference: n ? change / n : 0 };
-}

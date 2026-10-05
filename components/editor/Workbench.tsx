@@ -31,7 +31,6 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
-  PanelRightClose,
   SlidersHorizontal,
   ArrowRight,
   Download,
@@ -49,7 +48,6 @@ import type { FloorFit, PlacementApi } from "./Scene";
 import SpacesDialog, { ContinueCard, type SpaceSummary } from "./SpacesDialog";
 import {
   prepareImages,
-  preserveOutside,
   canvas,
   blob,
   loadImage,
@@ -132,6 +130,16 @@ function mergeItems(local: Item[], server: Item[]) {
     return { ...i, status: s.status, model: s.model, thumbnail: s.thumbnail, error: s.error };
   });
 }
+/**
+ * Safari on a Mac: its WebAssembly engine crashes while decoding the 3D room (seen on macOS 14.5,
+ * repeatedly, until Safari gives up on the page). Chrome and Edge are fine.
+ */
+const macSafari = () =>
+  typeof navigator !== "undefined" &&
+  /Macintosh/.test(navigator.userAgent) &&
+  /Safari\//.test(navigator.userAgent) &&
+  !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(navigator.userAgent);
+const SAFARI_OK = "room.safari-ok";
 async function api(body: any): Promise<any> {
   const r = await fetch("/api/workbench", {
     method: "POST",
@@ -229,7 +237,6 @@ export default function Workbench() {
   const [recognitionPercent, setRecognitionPercent] = useState<number | undefined>();
   const [recognitionError, setRecognitionError] = useState("");
   const [imageRepair, setImageRepair] = useState<boolean | null>(null);
-  const [localMode, setLocalMode] = useState(false);
   const [generationReady, setGenerationReady] = useState({world:false,furniture:false});
   const [repairMessage, setRepairMessage] = useState("");
   const repairAbort = useRef<AbortController | null>(null);
@@ -239,6 +246,16 @@ export default function Workbench() {
   const fileRef = useRef<HTMLInputElement>(null),
     viewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(p);
+  // In Safari the room waits behind a note until the person chooses to load it anyway (remembered).
+  // (Nothing the server renders depends on it: the home page is shown until a space is opened.)
+  const [safariHold, setSafariHold] = useState(() => {
+    if (!macSafari()) return false;
+    try {
+      return localStorage.getItem(SAFARI_OK) !== "1";
+    } catch {
+      return true;
+    }
+  });
   // The person's spaces for the home page; null until loaded.
   const [spaces, setSpaces] = useState<SpaceSummary[] | null>(null);
   const [spacesOpen, setSpacesOpen] = useState(false);
@@ -254,8 +271,8 @@ export default function Workbench() {
     return api({action:"retry",id:current.id,task:task.id,confirmPaid});
   }
   useEffect(() => {
-    Promise.all([localStatus(),fetch("/api/workbench?capabilities=1").then(r=>r.json() as Promise<{imageRepair:boolean;world:boolean;furniture:boolean}>) ]).then(([local,j])=>{
-      setLocalMode(!!local?.local);setImageRepair(local?.local?!!local.inpainting:!!j.imageRepair);
+    Promise.all([localStatus(),fetch("/api/workbench?capabilities=1").then(r=>r.json() as Promise<{world:boolean;furniture:boolean}>) ]).then(([local,j])=>{
+      setImageRepair(!!local?.inpainting);
       setGenerationReady({world:!!j.world,furniture:!!j.furniture});
     }).catch(()=>{});
     // The home page comes first: the person picks a space, uploads a photo or opens the example.
@@ -265,9 +282,9 @@ export default function Workbench() {
   }, []);
   async function loadSpaces() {
     const r = await fetch("/api/workbench?list=1");
-    const j: any = await r.json();
-    if (!r.ok) throw Error(j.error);
-    setSpaces(j);
+    const j: unknown = await r.json();
+    if (!r.ok) throw Error((j as { error?: string }).error);
+    setSpaces(j as SpaceSummary[]);
   }
   // A space opened from the home page continues where it was left.
   function enter(j: Project) {
@@ -293,10 +310,10 @@ export default function Workbench() {
   const openSpace = (id: string) =>
     run(async () => {
       const r = await fetch("/api/workbench?id=" + encodeURIComponent(id));
-      const j: any = await r.json();
-      if (!r.ok) throw Error(j.error);
+      const j: unknown = await r.json();
+      if (!r.ok) throw Error((j as { error?: string }).error);
       setSpacesOpen(false);
-      enter(j);
+      enter(j as Project);
     });
   async function renameSpace(id: string, name: string) {
     await api({ action: "rename", id, name });
@@ -350,9 +367,9 @@ export default function Workbench() {
     let active = true;
     // Local repair already keeps every pixel beyond its slightly grown, feathered edge untouched.
     // Re-clipping to the tight outline here would restore the furniture's edge pixels as a ghost.
-    (localMode
-      ? fetch(url(p.rawBackground)).then((r) => r.blob()).then((blob) => ({ blob, outsideDifference: 0 }))
-      : preserveOutside(p.original, p.rawBackground, p.mask))
+    fetch(url(p.rawBackground))
+      .then((r) => r.blob())
+      .then((blob) => ({ blob, outsideDifference: 0 }))
       .then((r) => {
         if (active) {
           setProcessed(r.blob);
@@ -367,7 +384,7 @@ export default function Workbench() {
     return () => {
       active = false;
     };
-  }, [p?.rawBackground,p?.mask,p?.original,p?.stage,localMode]);
+  }, [p?.rawBackground,p?.mask,p?.original,p?.stage]);
   useEffect(() => {
     if (!p) return;
     for (const c of p.candidates)
@@ -633,7 +650,8 @@ export default function Workbench() {
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
-        e.shiftKey ? redo() : undo();
+        if (e.shiftKey) redo();
+        else undo();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
@@ -697,7 +715,7 @@ export default function Workbench() {
   }
   async function prepare() {
     if (!p?.original) return;
-    if (imageRepair === false) throw Error("家具识别和选择已保留。背景修复服务还未连接，暂时无法移除家具；没有消耗生成积分。");
+    if (imageRepair === false) throw Error("本机的背景修复模型还没装好：请关掉工作台窗口再重新启动，它会自动检查并补全模型。已圈选的家具会保留。");
     const selected = p.candidates.filter((c) => choices.includes(c.id));
     if (!selected.length) throw Error("请勾选本次要处理的家具。");
     const controller=new AbortController();repairAbort.current=controller;
@@ -712,16 +730,14 @@ export default function Workbench() {
         originalCrops[id] = (await upload(p.id, "crop-" + id, r.crops[id])).key;
       }
     let localBackground;
-    if(localMode){
-      try {
-        if(controller.signal.aborted)throw Error('已取消处理，照片和选择已保留。');
-        const original=await fetch(url(p.original),{signal:controller.signal}).then(r=>r.blob());
-        const result=await localVisionJob('inpaint',original,r.mask,setRepairMessage,controller.signal);
-        if(controller.signal.aborted)return;
-        setRepairMessage("正在保存修复结果");
-        localBackground=(await upload(p.id,'local-background',base64Blob(result.image))).key;
-      }finally{repairAbort.current=null;setRepairMessage("");}
-    }
+    try {
+      if(controller.signal.aborted)throw Error('已取消处理，照片和选择已保留。');
+      const original=await fetch(url(p.original),{signal:controller.signal}).then(r=>r.blob());
+      const result=await localVisionJob('inpaint',original,r.mask,setRepairMessage,controller.signal);
+      if(controller.signal.aborted)return;
+      setRepairMessage("正在保存修复结果");
+      localBackground=(await upload(p.id,'local-background',base64Blob(result.image))).key;
+    }finally{repairAbort.current=null;setRepairMessage("");}
     setProcessed(null);setProcessedURL("");
     setP(
       await api({
@@ -1075,7 +1091,37 @@ export default function Workbench() {
         }}
       />
       <section className={"workspace " + (!p ? "empty-workspace" : "") + (tab === "library" && !editDraft ? " library-open" : "")}>
-        {p && (p.mode === "demo" || p.room) ? (
+        {p?.room && p.mode === "real" && safariHold ? (
+          <div className="safari-note" role="alert">
+            <span className="eyebrow">浏览器提示</span>
+            <h2>这个 3D 房间请用 Chrome 打开</h2>
+            <p>Safari 加载 3D 房间时会反复崩溃（这是 Safari 的 WebAssembly 问题，和照片、网络无关）。用 Chrome 或 Edge 打开同一个地址就能正常查看；首页和示例房间在 Safari 里也能用。</p>
+            <div className="safari-actions">
+              <button
+                className="button primary"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(location.origin)
+                    .then(() => setToast("地址已复制，粘贴到 Chrome 的地址栏打开。"))
+                    .catch(() => setToast("请在 Chrome 里打开 " + location.origin))
+                }
+              >
+                复制地址
+              </button>
+              <button
+                className="text-button"
+                onClick={() => {
+                  try {
+                    localStorage.setItem(SAFARI_OK, "1");
+                  } catch {}
+                  setSafariHold(false);
+                }}
+              >
+                仍然在 Safari 中打开
+              </button>
+            </div>
+          </div>
+        ) : p && (p.mode === "demo" || p.room) ? (
           <Scene
             project={p}
             selected={selected}
@@ -2008,7 +2054,7 @@ export default function Workbench() {
                       )}
                       {!manual &&
                         p.stage !== "review" &&
-                        p.candidates.map((c, i) => (
+                        p.candidates.map((c) => (
                           <button
                             key={c.id}
                             aria-label={"选择" + c.name}
@@ -2227,31 +2273,6 @@ export default function Workbench() {
                         {p.intent && (
                           <div className="intent-quote">“{p.intent}”</div>
                         )}
-                        {p.tasks
-                          .filter(
-                            (t) =>
-                              t.kind === "detect" &&
-                              ["failed", "uncertain", "paused"].includes(t.status),
-                          )
-                          .map((t) => (
-                            <div className="notice" key={t.id}>
-                              {t.error}
-                              {canRetry(t) && (
-                                <button
-                                  className="text-button"
-                                  onClick={() =>
-                                    run(async () =>
-                                      setP(
-                                        await retryTask(t.id),
-                                      ),
-                                    )
-                                  }
-                                >
-                                  重试此项
-                                </button>
-                              )}
-                            </div>
-                          ))}
                         {p.candidates.length === 0 && !running && (
                           <div className="notice">
                             没有找到匹配对象。可以修改描述重新检测，或手动圈选。
@@ -2305,8 +2326,8 @@ export default function Workbench() {
                             名称相同也可能是不同实例；“窗边”等方位需在图中核对。
                           </p>
                         )}
-                        {imageRepair===false && <div className="notice">{localMode ? "本地修复模型未就绪，请重新启动工作台完成模型检查。已圈选的家具会保留。" : "背景修复服务尚未连接。请使用本地工作台，免费完成抠图与修复。"}</div>}
-                        {localMode && imageRepair && <p className="small muted">本地 LaMa 修复 · 无需密钥 · 不消耗积分 · 照片留在本机</p>}
+                        {imageRepair===false && <div className="notice">本地修复模型未就绪，请重新启动工作台完成模型检查。已圈选的家具会保留。</div>}
+                        {imageRepair && <p className="small muted">本地 LaMa 修复 · 无需密钥 · 不消耗积分 · 照片留在本机</p>}
                         <button
                           className="button primary full"
                           disabled={busy || recognizing || running || !choices.length || imageRepair===false}
@@ -2393,7 +2414,7 @@ export default function Workbench() {
                             onDims={setPieceDims}
                           />
                         )}
-                        <a className="button primary full" href={localMode && p.rawBackground ? url(p.rawBackground)+'&download='+encodeURIComponent('房间-修复背景.png') : processedURL || undefined} download="房间-修复背景.png" aria-disabled={!processed}>下载修复后的房间</a>
+                        <a className="button primary full" href={p.rawBackground ? url(p.rawBackground)+'&download='+encodeURIComponent('房间-修复背景.png') : undefined} download="房间-修复背景.png" aria-disabled={!processed}>下载修复后的房间</a>
                         <p className="small muted">免费处理已完成，结果已保存在本机。大面积遮挡和家具背后的区域是推测补全，可返回重新圈选。</p>
                         <h3>需要三维空间？</h3>
                         <p className="small muted">这是独立的可选步骤。World Labs 生成空间，Tripo 生成家具模型；两者可能消耗服务商积分。</p>
@@ -2442,7 +2463,6 @@ export default function Workbench() {
                         </p>
                         <div className="task-list">
                           {p.tasks
-                            .filter((t) => t.kind !== "detect")
                             .map((t) => (
                               <div className={"task " + (t.status === "done" ? "done" : ["failed", "uncertain", "paused"].includes(t.status) ? "failed" : "")} key={t.id}>
                                 {t.status === "done" ? (
@@ -2458,10 +2478,8 @@ export default function Workbench() {
                                   <strong>
                                     {t.kind === "world"
                                       ? "房间空间"
-                                      : t.kind === "erase"
-                                        ? "背景修复"
-                                        : p.items.find((i) => i.id === t.target)
-                                            ?.name || "独立家具"}
+                                      : p.items.find((i) => i.id === t.target)
+                                          ?.name || "独立家具"}
                                   </strong>
                                   <span>
                                     {t.status === "done"
@@ -2613,11 +2631,11 @@ export default function Workbench() {
                 <div className="service-row">
                   <strong>背景修复</strong>
                   <span>
-                    {localMode ? (imageRepair ? "本地 LaMa · 免费 · 已就绪" : "本地模型待安装") : services.image ? "已配置 fal.ai" : "待配置 FAL_KEY"}
+                    {imageRepair ? "本地 LaMa · 免费 · 已就绪" : "本地模型待安装"}
                   </span>
                 </div>
                 <p className="muted">
-                  {localMode ? "识别、透明抠图、背景补全都在本机完成，不需要 API 密钥。World Labs 和 Tripo 仅用于可选的 3D 生成。" : "浏览器识别无需密钥。背景修复可在本地工作台免费运行。"}
+                  识别、透明抠图、背景补全都在本机完成，不需要 API 密钥。World Labs 和 Tripo 仅用于可选的 3D 生成。
                 </p>
                 <p className="small muted">
                   本轮 Tripo 上限 5,000 积分。示例房间不消耗生成积分。

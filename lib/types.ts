@@ -51,7 +51,7 @@ export type Candidate = {
   box: number[];
   score: number;
   selected: boolean;
-  source: "sam3" | "manual" | "local-detr";
+  source: "manual" | "local-detr";
   needsReview?: boolean;
 };
 export type Task = {

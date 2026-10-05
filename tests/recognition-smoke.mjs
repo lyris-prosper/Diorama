@@ -27,7 +27,7 @@ const segmenter=await pipeline('image-segmentation','detr',{dtype:'q8',local_fil
 const sam=await SamModel.from_pretrained('slimsam',{dtype:{vision_encoder:'fp32',prompt_encoder_mask_decoder:'fp32'},device:'cpu',local_files_only:true});
 const processor=await AutoProcessor.from_pretrained('slimsam',{local_files_only:true});
 const reports=[];
-for(const image of ['resources/validation/thumbnail.webp','public/room-atmosphere.webp']){
+for(const image of ['resources/validation/thumbnail.webp','resources/validation/living-room.webp']){
  const began=performance.now();
  let raw=await RawImage.read(image);
  if(Math.max(raw.width,raw.height)>1024) {const k=1024/Math.max(raw.width,raw.height);raw=await raw.resize(Math.round(raw.width*k),Math.round(raw.height*k));}

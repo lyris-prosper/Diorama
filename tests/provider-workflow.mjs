@@ -23,11 +23,10 @@ function load(path){
   const code=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
   const sandbox={Buffer,Blob,FormData,Headers,Response,Request,AbortSignal,URL,crypto,console,process:{env:{NODE_ENV:'development'}},setTimeout:(f)=>queueMicrotask(f),fetch:async(url,init={})=>{calls.push({url,init});if(!handler)throw Error('Network disabled');return handler(url,init)}};
   const fn=vm.runInNewContext(`(function(require,module,exports){${code}\n})`,sandbox,{filename:path});
-  fn(name=>name==='cloudflare:workers'?{env}:name==='@fal-ai/client'?{createFalClient:()=>{throw Error('FAL disabled in offline tests')}}:name.startsWith('.')?load(resolve(dirname(path),name+'.ts')):(()=>{throw Error('Unexpected import '+name)})(),mod,mod.exports);
+  fn(name=>name==='cloudflare:workers'?{env}:name.startsWith('.')?load(resolve(dirname(path),name+'.ts')):(()=>{throw Error('Unexpected import '+name)})(),mod,mod.exports);
   return mod.exports;
 }
 const http=load(root+'/lib/server/provider-http.ts');
-const providers=load(root+'/lib/server/providers.ts');
 const jobs=load(root+'/lib/server/jobs.ts');
 const budget=load(root+'/lib/server/job-budget.ts');
 const storage=load(root+'/lib/server/storage.ts');

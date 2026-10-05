@@ -1,5 +1,5 @@
 import { bindings, getProject, saveProject, cacheRemote, slimModel } from "./storage";
-import { startWorld, startTripo, startImage, pollWorld, pollTripo, pollImage } from "./providers";
+import { startWorld, startTripo, pollWorld, pollTripo } from "./providers";
 import { ProviderError, billing } from "./provider-http";
 import { estimate, budgetLimit, BUDGET_USED_SQL, settle } from "./job-budget";
 import type { Project } from "../types";
@@ -49,12 +49,12 @@ export async function tick(id: string, user: string) {
       let provider: string | undefined;
       try {
         const payload = JSON.parse(j.payload);
-        provider = j.kind === "world" ? await startWorld(payload.image) : j.kind === "furniture" ? await startTripo(payload.image) : await startImage(j.kind,payload);
+        provider = j.kind === "world" ? await startWorld(payload.image) : await startTripo(payload.image);
         await db.prepare("UPDATE jobs SET status='running',provider=?,poll_started=?,next_poll=0,updated=? WHERE id=? AND status='submitting'")
           .bind(provider,Date.now(),Date.now(),j.id).run();
       } catch (e) {
         const err = e as ProviderError;
-        const uncertain = !!provider || !!err.uncertain || (!["world","furniture"].includes(j.kind) && !(e instanceof ProviderError));
+        const uncertain = !!provider || !!err.uncertain;
         const result = { definiteRejection: !uncertain, terminal: false, category: err.category, requestId: err.requestId, code: err.code };
         await db.prepare("UPDATE jobs SET status=?,provider=?,error=?,result=?,reserved=CASE WHEN ? THEN reserved ELSE 0 END,updated=? WHERE id=? AND status='submitting'")
           .bind(uncertain ? "uncertain" : "failed",provider || null,
@@ -73,7 +73,7 @@ export async function tick(id: string, user: string) {
       .bind(Date.now()+600000,j.id,Date.now()).run();
     if (!lease.meta.changes) continue;
     try {
-      const out = j.kind === "world" ? await pollWorld(j.provider) : j.kind === "furniture" ? await pollTripo(j.provider) : await pollImage(j.kind,j.provider);
+      const out = j.kind === "world" ? await pollWorld(j.provider) : await pollTripo(j.provider);
       if (!out) {
         await db.prepare("UPDATE jobs SET next_poll=?,poll_failures=0 WHERE id=?").bind(Date.now()+5000,j.id).run();
         continue;
@@ -81,34 +81,6 @@ export async function tick(id: string, user: string) {
       const charge = billing(j.kind,out);
       if (!j.settled) await settle(j,"success",charge.cost,charge.details);
       const p = await getProject(id,user);
-      if (j.kind === "detect") {
-        const info = JSON.parse(j.payload);
-        for (let i = 0; i < (out.masks || []).length; i++) {
-          const key = await cacheRemote(
-            out.masks[i].url,
-            `${p.id}/masks/${j.target}-${i}.png`,
-          );
-          const c = {
-            id: `${j.target}-${i}`,
-            name: info.name + (out.masks.length > 1 ? ` ${i + 1}` : ""),
-            kind: info.kind,
-            mask: key,
-            box: out.boxes?.[i] || out.metadata?.[i]?.box || [0.5, 0.5, 1, 1],
-            score: out.scores?.[i] ?? out.metadata?.[i]?.score ?? 0,
-            selected: false,
-            source: "sam3" as const,
-          };
-          p.candidates = p.candidates.filter((v) => v.id !== c.id).concat(c);
-        }
-        p.stage = "confirm";
-      }
-      if (j.kind === "erase") {
-        p.rawBackground = await cacheRemote(
-          out.image.url,
-          `${p.id}/processed/raw.png`,
-        );
-        p.stage = "review";
-      }
       if (j.kind === "world") {
         const a = out.assets;
         if (!a?.splats?.spz_urls) throw Error("服务没有返回可加载的空间资产。");

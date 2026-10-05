@@ -5,7 +5,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
-import type { CleanLayer, Erasure, Item, Project } from "@/lib/types";
+import type { CleanLayer, Erasure, Project } from "@/lib/types";
 import { alignClean, readSpzPoints } from "@/lib/align-clean";
 import { buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, type RoomGrid } from "@/lib/placement";
 const asset = (key: string) =>
@@ -192,7 +192,8 @@ function detectFloor(collider: THREE.Object3D, eye: THREE.Vector3): FloorFit | n
 }
 // Fallback for worlds without a collider (e.g. imported from the Marble website): the floor and
 // ceiling are the densest horizontal layers of splat centres below and above the camera.
-function detectFloorFromSplats(splat: THREE.Object3D & { forEachSplat?: Function; numSplats?: number }, eye: THREE.Vector3): FloorFit | null {
+type SplatVisitor = (index: number, center: THREE.Vector3, scales: THREE.Vector3, quaternion: THREE.Quaternion, opacity: number) => void;
+function detectFloorFromSplats(splat: THREE.Object3D & { forEachSplat?: (visit: SplatVisitor) => void; numSplats?: number }, eye: THREE.Vector3): FloorFit | null {
   if (typeof splat.forEachSplat !== "function") return null;
   splat.updateMatrixWorld(true);
   const m = splat.matrixWorld,

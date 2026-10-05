@@ -6,11 +6,9 @@ export function bindings() {
   if (!e.DB || !e.BUCKET) throw Error("项目存储暂时不可用，请重试。");
   return { db: e.DB as D1Database, bucket: e.BUCKET as R2Bucket, secrets: e };
 }
-export function owner(req: Request) {
-  const id = req.headers.get("oai-authenticated-user-id");
-  if (id) return id;
-  if (process.env.NODE_ENV === "development") return "local-preview";
-  throw Error("请先登录以访问自己的空间。");
+/** The workbench runs on one person's Mac, without sign-in: every space belongs to this owner. */
+export function owner() {
+  return "local-preview";
 }
 export async function getProject(id: string, user: string): Promise<Project> {
   const { db } = bindings();
@@ -71,10 +69,6 @@ export async function bytes(key: string) {
     buffer: await o.arrayBuffer(),
     type: o.httpMetadata?.contentType || "image/png",
   };
-}
-export async function dataURI(key: string) {
-  const b = await bytes(key);
-  return `data:${b.type};base64,${Buffer.from(b.buffer).toString("base64")}`;
 }
 export async function cacheRemote(url: string, key: string, format?: "glb" | "spz") {
   if (typeof url !== "string" || !url.startsWith("https://")) throw Error("服务商没有返回有效的资产下载地址，可继续查询原任务。");

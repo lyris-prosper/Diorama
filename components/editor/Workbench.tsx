@@ -46,6 +46,7 @@ import CatalogPanel from "./CatalogPanel";
 import AddFurnitureDialog, { type NewPiece } from "./AddFurnitureDialog";
 import FurnitureInputs from "./FurnitureInputs";
 import type { FloorFit, PlacementApi } from "./Scene";
+import SpacesDialog, { ContinueCard, type SpaceSummary } from "./SpacesDialog";
 import {
   prepareImages,
   preserveOutside,
@@ -238,6 +239,9 @@ export default function Workbench() {
   const fileRef = useRef<HTMLInputElement>(null),
     viewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(p);
+  // The person's spaces for the home page; null until loaded.
+  const [spaces, setSpaces] = useState<SpaceSummary[] | null>(null);
+  const [spacesOpen, setSpacesOpen] = useState(false);
   // The 3D view's answers about pieces resting on each other (Scene.tsx).
   const placement = useRef<PlacementApi | null>(null);
   stateRef.current = p;
@@ -254,30 +258,55 @@ export default function Workbench() {
       setLocalMode(!!local?.local);setImageRepair(local?.local?!!local.inpainting:!!j.imageRepair);
       setGenerationReady({world:!!j.world,furniture:!!j.furniture});
     }).catch(()=>{});
-    fetch("/api/workbench")
-      .then(async (r) => {
-        const j: any = await r.json();
-        if (!r.ok) throw Error(j.error);
-        setP(j);
-        if (j?.original && !j.photoPrint)
-          void photoPrint(url(j.original))
-            .then((print) => api({ action: "set-print", id: j.id, print }))
-            .then((saved: Project) => setP((cur) => (cur && cur.id === saved.id ? { ...cur, photoPrint: saved.photoPrint } : cur)))
-            .catch(() => undefined);
-        if (j) {
-          setBranch(j.branch);
-          setIntent(j.intent);
-          setChoices(
-            j.candidates
-              .filter((c: Candidate) => c.selected)
-              .map((c: Candidate) => c.id),
-          );
-          if (j.stage !== "ready") setDrawer(true);
-        }
-      })
+    // The home page comes first: the person picks a space, uploads a photo or opens the example.
+    loadSpaces()
       .catch((e) => setError(e.message))
       .finally(() => setBoot(false));
   }, []);
+  async function loadSpaces() {
+    const r = await fetch("/api/workbench?list=1");
+    const j: any = await r.json();
+    if (!r.ok) throw Error(j.error);
+    setSpaces(j);
+  }
+  // A space opened from the home page continues where it was left.
+  function enter(j: Project) {
+    setP(j);
+    setHistory([]);
+    setFuture([]);
+    setDirty(false);
+    setSelected(null);
+    setPending(null);
+    setProcessed(null);
+    setProcessedURL("");
+    setApproved(false);
+    if (j.original && !j.photoPrint)
+      void photoPrint(url(j.original))
+        .then((print) => api({ action: "set-print", id: j.id, print }))
+        .then((saved: Project) => setP((cur) => (cur && cur.id === saved.id ? { ...cur, photoPrint: saved.photoPrint } : cur)))
+        .catch(() => undefined);
+    setBranch(j.branch);
+    setIntent(j.intent);
+    setChoices(j.candidates.filter((c: Candidate) => c.selected).map((c: Candidate) => c.id));
+    setDrawer(j.stage !== "ready");
+  }
+  const openSpace = (id: string) =>
+    run(async () => {
+      const r = await fetch("/api/workbench?id=" + encodeURIComponent(id));
+      const j: any = await r.json();
+      if (!r.ok) throw Error(j.error);
+      setSpacesOpen(false);
+      enter(j);
+    });
+  async function renameSpace(id: string, name: string) {
+    await api({ action: "rename", id, name });
+    await loadSpaces();
+  }
+  async function deleteSpace(id: string) {
+    await api({ action: "delete-project", id });
+    await loadSpaces();
+    setToast("空间已删除。");
+  }
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 3500);
@@ -597,7 +626,7 @@ export default function Workbench() {
     });
   useEffect(() => {
     function key(e: KeyboardEvent) {
-      if ((e.target as HTMLElement).matches("input,textarea,select")) return;
+      if (e.target instanceof Element && e.target.matches("input,textarea,select")) return;
       if (e.key === "Escape") {
         setPending(null);
         setSelected(null);
@@ -771,6 +800,7 @@ export default function Workbench() {
     setDirty(false);
     setHistory([]);
     setFuture([]);
+    void loadSpaces().catch(() => undefined);
   }
   const demo = () => run(async () => { await create("demo"); });
   // A room already generated on the Marble website (often a better model than the draft) is
@@ -1120,6 +1150,14 @@ export default function Workbench() {
                 </button>
               </div>
               <p className="fine-print">JPG / PNG / WebP，10 MB 以内，也可以直接拖到页面上。</p>
+              {!!spaces?.length && (
+                <div className="my-spaces">
+                  <ContinueCard space={spaces[0]} onOpen={() => void openSpace(spaces[0].id)} />
+                  <button className="text-button" onClick={() => setSpacesOpen(true)}>
+                    全部 {spaces.length} 个空间
+                  </button>
+                </div>
+              )}
               <p className="local-note">
                 <span className="local-dot" />
                 识别、抠图、补全背景都在这台电脑上完成，不上传、不花钱。生成 3D 时才会用到服务商积分。
@@ -1155,6 +1193,14 @@ export default function Workbench() {
               </li>
             </ol>
             {dragOver && <div className="drop-veil">松开，开始识别这间房</div>}
+            <SpacesDialog
+              open={spacesOpen}
+              onOpenChange={setSpacesOpen}
+              spaces={spaces ?? []}
+              onOpen={(id) => void openSpace(id)}
+              onRename={renameSpace}
+              onDelete={deleteSpace}
+            />
           </div>
         )}
         {boot && (

@@ -377,7 +377,7 @@ export default function Scene(props: Props) {
       if (!f.confirmed) return null;
       const { origin, direction } = ray.ray;
       const piece = hitPieces(ray, pieces(skip));
-      const grid: RoomGrid | null = engine.current?.grid ?? null;
+      const grid: RoomGrid | null = engine.current?.scan ?? null;
       if (grid) {
         const scan = castRoom(grid, origin, direction, erasedBoxes());
         if (piece && piece.t <= (scan?.t ?? Infinity)) return landOnPiece(piece, direction);
@@ -401,7 +401,7 @@ export default function Scene(props: Props) {
     // The height a piece would rest at under x,z: placed furniture, the scan or the floor below fromY.
     function restAt(x: number, z: number, fromY: number, ignore: Iterable<string>) {
       const f = live.current.project.floor,
-        grid: RoomGrid | null = engine.current?.grid ?? null;
+        grid: RoomGrid | null = engine.current?.scan ?? null;
       return Math.max(
         f.height,
         piecesBelow(pieces(new Set(ignore)), x, z, fromY) ?? -Infinity,
@@ -488,7 +488,7 @@ export default function Scene(props: Props) {
       floor(e);
       const hit = hitPieces(ray, pieces(new Set()));
       // A piece the scan stands in front of (behind the wardrobe) is out of reach.
-      const grid: RoomGrid | null = engine.current?.grid ?? null;
+      const grid: RoomGrid | null = engine.current?.scan ?? null;
       const front = hit && grid ? castRoom(grid, ray.ray.origin, ray.ray.direction, erasedBoxes()) : null;
       const id: string | undefined = hit && !(front && front.t < hit.t - 0.03) ? hit.root.userData.itemId : undefined;
       if (id) {
@@ -1051,7 +1051,7 @@ export default function Scene(props: Props) {
       p = props.project,
       room = p.room;
     if (!e) return;
-    e.grid = null;
+    e.scan = null;
     if (!room || p.mode !== "real" || !p.floor.confirmed) return;
     let stale = false;
     const key = room.splat;
@@ -1059,7 +1059,7 @@ export default function Scene(props: Props) {
     points
       .then((data) => {
         if (stale || e.disposed()) return;
-        e.grid = buildRoomGrid(data, { scale: room.scale, offset: room.offset, floorY: p.floor.height, half: p.floor.size / 2 + 0.5 });
+        e.scan = buildRoomGrid(data, { scale: room.scale, offset: room.offset, floorY: p.floor.height, half: p.floor.size / 2 + 0.5 });
       })
       .catch(() => undefined);
     return () => {

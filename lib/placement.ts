@@ -140,8 +140,9 @@ function topFrom(g: RoomGrid, column: number, iy: number, x: number, z: number, 
   let j = iy;
   while (j + 1 < g.ny && g.occ[base + j + 1] && !erased(x, binY(g, j + 1), z, boxes)) j++;
   if (j >= g.ny - 1 || (j - iy) * g.bin > MAX_SIDE) return null;
-  // Occupancy is padded by one bin: the surface is the highest bin with centres around it.
-  for (let k = j; k >= iy; k--) if (rawNear(g, column, k) >= 2) return binY(g, k);
+  // Occupancy is padded by one bin, and a ray from above enters it in the padding: the surface is
+  // the highest bin with centres around it, looked for down to two bins under the one met.
+  for (let k = j; k >= Math.max(0, iy - 2); k--) if (rawNear(g, column, k) >= 2) return binY(g, k);
   return binY(g, Math.max(iy, j - 1));
 }
 
@@ -218,7 +219,11 @@ export function roomBelow(g: RoomGrid, x: number, z: number, y: number, boxes: E
   for (let k = Math.min(g.ny - 1, Math.floor((y - g.y0) / g.bin)); k >= 0; k--) {
     const at = binY(g, k);
     if (at - g.floorY < FLOOR_BAND) return g.floorY;
-    if (g.occ[base + k] && rawNear(g, column, k) >= 2 && !erased(x, at, z, boxes)) return at;
+    if (!g.occ[base + k] || erased(x, at, z, boxes)) continue;
+    // The top of the surface met, refined as castRoom refines it, so both agree on its height.
+    for (let r = k; r >= Math.max(0, k - 2); r--)
+      if (rawNear(g, column, r) >= 2) return binY(g, r) - g.floorY < FLOOR_BAND ? g.floorY : binY(g, r);
+    return at;
   }
   return g.floorY;
 }

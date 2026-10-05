@@ -431,6 +431,173 @@ input[type="number"] {
   font-size: 12px;
   color: var(--ink-3);
 }
+/* the person's spaces on the home page */
+.my-spaces {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 22px;
+}
+.continue-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 380px;
+  padding: 7px 16px 7px 7px;
+  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  box-shadow: var(--lift-1);
+  text-align: left;
+  color: var(--ink);
+  transition:
+    transform 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.continue-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--oak);
+  box-shadow: var(--lift-2);
+}
+.continue-card > svg {
+  flex-shrink: 0;
+  color: var(--oak-deep);
+}
+.continue-thumb {
+  flex-shrink: 0;
+  width: 60px;
+  height: 45px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--paper-deep);
+}
+.continue-thumb img,
+.space-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.continue-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.continue-text strong {
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.continue-text > span:last-child {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+[data-slot="dialog-content"].spaces {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  width: min(880px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  outline: none;
+  border-radius: 24px;
+  border: 1px solid rgb(255 255 255 / 80%);
+  background: var(--card);
+  box-shadow: var(--lift-3);
+  animation: dialog-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.spaces .add-error {
+  margin: 0 28px 10px;
+}
+.space-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  /* Full cards; the list scrolls rather than squeezing them. */
+  grid-auto-rows: max-content;
+  gap: 14px;
+  margin: 0;
+  padding: 6px 28px 28px;
+  list-style: none;
+  overflow: auto;
+}
+.space-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.space-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--lift-1);
+}
+.space-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.space-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  background: var(--paper-deep);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.space-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 10px 8px 12px;
+  min-width: 0;
+}
+.space-info strong {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.space-info > span {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.space-info input {
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--mist);
+  box-shadow: 0 0 0 3px var(--mist-soft);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.space-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+}
+.space-actions .text-button {
+  margin-right: auto;
+  font-size: 13px;
+}
 .local-note {
   display: flex;
   gap: 10px;

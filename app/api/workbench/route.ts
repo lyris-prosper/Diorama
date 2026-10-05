@@ -32,6 +32,28 @@ export async function GET(req: Request) {
     if (q.has("budgets")) return Response.json({world: await budgetSummary("world"), furniture: await budgetSummary("furniture")});
     if (q.has("services")) return Response.json(await balances());
     if (q.has("id")) return Response.json(await getProject(q.get("id")!, user));
+    if (q.has("list")) {
+      // The person's own spaces, newest first, for the home page (the example room has its own button).
+      const rows = await bindings()
+        .db.prepare("SELECT data,updated FROM projects WHERE owner=? ORDER BY updated DESC LIMIT 100")
+        .bind(user)
+        .all<{ data: string; updated: number }>();
+      return Response.json(
+        rows.results
+          .map((r) => ({ p: JSON.parse(r.data) as Project, updated: r.updated }))
+          .filter(({ p }) => p.mode === "real")
+          .map(({ p, updated }) => ({
+            id: p.id,
+            name: p.name,
+            stage: p.stage,
+            updated,
+            original: p.original ?? null,
+            room: !!p.room,
+            pieces: p.items.length,
+            placed: p.items.filter((i) => i.status === "placed").length,
+          })),
+      );
+    }
     const row = await bindings()
       .db.prepare(
         "SELECT id FROM projects WHERE owner=? ORDER BY updated DESC LIMIT 1",
@@ -81,6 +103,14 @@ export async function POST(req: Request) {
     const b = (await req.json()) as any;
     const { db, secrets } = bindings();
     if (b.action === "create") {
+      // One example room per person: “看示例房间” opens the same one again, with its arrangement.
+      if (b.mode === "demo") {
+        const demo = await db
+          .prepare("SELECT id FROM projects WHERE owner=? AND json_extract(data,'$.mode')='demo' ORDER BY updated DESC LIMIT 1")
+          .bind(user)
+          .first<{ id: string }>();
+        if (demo) return Response.json(await getProject(demo.id, user));
+      }
       const p = emptyProject(
         crypto.randomUUID(),
         b.mode === "demo" ? "demo" : "real",
@@ -94,6 +124,39 @@ export async function POST(req: Request) {
       return Response.json(p);
     }
     const p = await getProject(b.id, user);
+    if (b.action === "rename") {
+      const name = String(b.name ?? "").trim().slice(0, 40);
+      if (!name) throw Error("名称不能为空。");
+      p.name = name;
+      return Response.json(await saveProject(p, user));
+    }
+    if (b.action === "delete-project") {
+      if (p.tasks.some((t) => ["queued", "running", "submitting"].includes(t.status)))
+        throw Error("这个空间还有生成任务在进行，等它完成后再删除。");
+      const { bucket } = bindings();
+      // Spaces share files: a room reused through the photo fingerprint points at the first space's
+      // files. Only files that no other space (of any owner) mentions are removed with this one.
+      const others = await db.prepare("SELECT data FROM projects WHERE id<>?").bind(p.id).all<{ data: string }>();
+      const mentioned = others.results.map((r) => r.data).join("\n");
+      const doomed: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await bucket.list({ prefix: p.id + "/", cursor });
+        for (const o of page.objects) if (!mentioned.includes(o.key)) doomed.push(o.key);
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+      // Files it borrowed from a space that is already gone (a reused room) go too, unless still in use.
+      const borrowed = new Set(
+        [...JSON.stringify(p).matchAll(/"([^"/\s]+\/[^"\s]+)"/g)].map((m) => m[1]).filter((k) => !k.includes("://") && !k.startsWith(p.id + "/")),
+      );
+      for (const k of borrowed)
+        if (!mentioned.includes(k) && !(await db.prepare("SELECT 1 FROM projects WHERE id=?").bind(k.slice(0, k.indexOf("/"))).first()))
+          doomed.push(k);
+      for (let i = 0; i < doomed.length; i += 500) await bucket.delete(doomed.slice(i, i + 500));
+      // Its generation jobs stay: they are the record of credits spent.
+      await db.prepare("DELETE FROM projects WHERE id=? AND owner=?").bind(p.id, user).run();
+      return Response.json({ deleted: p.id, files: doomed.length });
+    }
     if(b.action === "revise") {
       if(!["branch","confirm","review"].includes(p.stage))throw Error("请等待当前任务结束。");
       p.stage="confirm";

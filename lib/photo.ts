@@ -1,4 +1,5 @@
 import { blob, canvas, loadImage } from "./image";
+import type { Bi } from "./i18n";
 
 /** Tripo accepts PNG/JPEG up to 20 MB: other formats are converted and the long side kept ≤ 2048 px. */
 export async function productPhoto(file: Blob) {
@@ -39,10 +40,15 @@ export async function backdrop(file: Blob): Promise<Backdrop> {
     URL.revokeObjectURL(src);
   }
 }
-export const backdropNote: Record<Backdrop, string> = {
-  white: "白底，很适合生成",
-  clean: "背景干净，可以生成",
-  busy: "背景有点杂，换成白底或纯色背景效果更好",
+export const backdropNote: Record<Backdrop, Bi> = {
+  white: { zh: "白底，很适合生成", en: "White backdrop, ideal" },
+  clean: { zh: "背景干净，可以生成", en: "Clean backdrop, good to go" },
+  busy: { zh: "背景有点杂，换成白底或纯色背景效果更好", en: "Busy backdrop; a white or plain one works better" },
 };
 
-export const PHOTO_TIPS = ["白底或纯色背景", "拍到家具全貌", "没有遮挡和杂物", "正面略带一点侧角"];
+export const PHOTO_TIPS: Bi[] = [
+  { zh: "白底或纯色背景", en: "White or plain backdrop" },
+  { zh: "拍到家具全貌", en: "The whole piece in frame" },
+  { zh: "没有遮挡和杂物", en: "Nothing in front of it" },
+  { zh: "正面略带一点侧角", en: "From the front, slightly to one side" },
+];

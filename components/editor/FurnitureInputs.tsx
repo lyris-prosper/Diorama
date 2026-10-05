@@ -4,6 +4,8 @@ import { Check, ImagePlus, Loader2, RotateCcw, Download, Lightbulb } from "lucid
 import type { Project, Dims } from "@/lib/types";
 import { backdrop, backdropNote, PHOTO_TIPS, type Backdrop } from "@/lib/photo";
 import DimsFields, { draftOf, readDims, type DimsDraft } from "./DimsFields";
+import { useLang } from "@/lib/i18n";
+import { pieceName } from "@/lib/furniture-kinds";
 
 const asset = (k: string) => "/api/assets?key=" + encodeURIComponent(k);
 type Saving = "idle" | "saving" | "saved" | "error";
@@ -25,14 +27,24 @@ export default function FurnitureInputs({
   onClearPhoto: (candidate: string) => Promise<void>;
   onDims: (candidate: string, dims: Dims | null) => Promise<void>;
 }) {
+  const { lang, t } = useLang();
   const ids = Object.keys(p.cutouts ?? {});
   return (
-    <section className="piece-inputs" aria-label="用于生成 3D 的家具图片和尺寸">
+    <section className="piece-inputs" aria-label={t("用于生成 3D 的家具图片和尺寸", "Photos and sizes for the 3D models")}>
       <div className="piece-tips">
         <Lightbulb size={15} />
         <p>
-          房间照片里抠出的家具常被挡住一角。换成一张<b>白底或干净背景</b>的产品照，生成的 3D 模型会更完整；填上真实尺寸，模型会按实际大小摆进房间。
-          <span>{PHOTO_TIPS.join(" · ")}</span>
+          {lang === "en" ? (
+            <>
+              A piece cut out of the room photo is often partly hidden. A product photo on a <b>white or plain backdrop</b> makes a more complete 3D model, and the
+              real size places it true to scale.
+            </>
+          ) : (
+            <>
+              房间照片里抠出的家具常被挡住一角。换成一张<b>白底或干净背景</b>的产品照，生成的 3D 模型会更完整；填上真实尺寸，模型会按实际大小摆进房间。
+            </>
+          )}
+          <span>{PHOTO_TIPS.map((tip) => tip[lang]).join(" · ")}</span>
         </p>
       </div>
       {ids.map((id) => (
@@ -65,7 +77,8 @@ function PieceCard({
   onClearPhoto: (candidate: string) => Promise<void>;
   onDims: (candidate: string, dims: Dims | null) => Promise<void>;
 }) {
-  const name = p.candidates.find((c) => c.id === id)?.name ?? "家具";
+  const { lang, t } = useLang();
+  const name = pieceName(p.candidates.find((c) => c.id === id)?.name ?? "家具", lang);
   const photo = p.productPhotos?.[id];
   const saved = p.furnitureDims?.[id];
   const [draft, setDraft] = useState<DimsDraft>(() => draftOf(saved));
@@ -92,7 +105,7 @@ function PieceCard({
   async function choose(file?: File) {
     if (!file) return;
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
-      setError("请选择 10 MB 以内的 JPG、PNG 或 WebP 图片。");
+      setError(t("请选择 10 MB 以内的 JPG、PNG 或 WebP 图片。", "Choose a JPG, PNG or WebP image of 10 MB or less."));
       return;
     }
     setError("");
@@ -148,8 +161,8 @@ function PieceCard({
           if (!disabled) void choose(e.dataTransfer.files[0]);
         }}
       >
-        <img src={asset(photo ?? p.cutouts![id])} alt={photo ? `${name}的产品照片` : `${name}的抠图`} />
-        <span className="piece-badge">{photo ? "白底照片" : "房间抠图"}</span>
+        <img src={asset(photo ?? p.cutouts![id])} alt={photo ? t(`${name}的产品照片`, `Product photo of ${name}`) : t(`${name}的抠图`, `Cut-out of ${name}`)} />
+        <span className="piece-badge">{photo ? t("白底照片", "Product photo") : t("房间抠图", "Cut-out")}</span>
         {photoState === "saving" && (
           <span className="piece-busy">
             <Loader2 className="spin" size={18} />
@@ -161,23 +174,23 @@ function PieceCard({
           <strong>{name}</strong>
           <a
             className="text-button"
-            href={asset(p.cutouts![id]) + "&download=" + encodeURIComponent(`家具-${id.slice(0, 6)}.png`)}
-            download={`家具-${id.slice(0, 6)}.png`}
-            title="下载房间抠图（透明 PNG）"
+            href={asset(p.cutouts![id]) + "&download=" + encodeURIComponent(t(`家具-${id.slice(0, 6)}.png`, `furniture-${id.slice(0, 6)}.png`))}
+            download={t(`家具-${id.slice(0, 6)}.png`, `furniture-${id.slice(0, 6)}.png`)}
+            title={t("下载房间抠图（透明 PNG）", "Download the cut-out (transparent PNG)")}
           >
             <Download size={13} />
-            抠图
+            {t("抠图", "Cut-out")}
           </a>
         </div>
         <div className="piece-actions">
           <button className="chip-button" disabled={disabled || photoState === "saving"} onClick={() => input.current?.click()}>
             <ImagePlus size={14} />
-            {photo ? "换一张" : "换成白底照片"}
+            {photo ? t("换一张", "Replace") : t("换成白底照片", "Use a product photo")}
           </button>
           {photo && (
             <button className="chip-button quiet" disabled={disabled || photoState === "saving"} onClick={() => void clearPhoto()}>
               <RotateCcw size={13} />
-              用回抠图
+              {t("用回抠图", "Back to the cut-out")}
             </button>
           )}
           <input
@@ -191,22 +204,23 @@ function PieceCard({
             }}
           />
         </div>
-        {photo && note && <p className={"backdrop-note " + note}>{backdropNote[note]}</p>}
+        {photo && note && <p className={"backdrop-note " + note}>{backdropNote[note][lang]}</p>}
         <DimsFields idPrefix={"dims-" + id} value={draft} onChange={(d) => { setDraft(d); setDimsState("idle"); }} onCommit={() => void commit()} />
         <p className={"piece-status" + (dimsState === "error" || error ? " error" : "")} aria-live="polite">
           {error ||
             (dimsState === "saving" ? (
               <>
-                <Loader2 className="spin" size={12} /> 正在保存尺寸
+                <Loader2 className="spin" size={12} /> {t("正在保存尺寸", "Saving the size")}
               </>
             ) : dimsState === "saved" || (saved && !incomplete) ? (
               <>
-                <Check size={12} /> 将按 {saved?.w ?? draft.w} × {saved?.d ?? draft.d} × {saved?.h ?? draft.h} cm 摆放
+                <Check size={12} /> {t("将按 ", "Placed at ")}
+                {saved?.w ?? draft.w} × {saved?.d ?? draft.d} × {saved?.h ?? draft.h} cm{t(" 摆放", "")}
               </>
             ) : incomplete ? (
-              "三项都填好（5–400 厘米）后自动保存"
+              t("三项都填好（5–400 厘米）后自动保存", "Saved once all three are filled in (5–400 cm)")
             ) : (
-              "尺寸可不填，不填时按常见尺寸估计"
+              t("尺寸可不填，不填时按常见尺寸估计", "Size is optional; without it a typical size is assumed")
             ))}
         </p>
       </div>

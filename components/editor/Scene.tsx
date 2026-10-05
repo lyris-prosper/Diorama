@@ -7,6 +7,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import type { CleanLayer, Erasure, Project } from "@/lib/types";
 import { alignClean, readSpzPoints } from "@/lib/align-clean";
+import { currentLang, pick } from "@/lib/i18n";
 import { buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, type RoomGrid } from "@/lib/placement";
 const asset = (key: string) =>
   key.startsWith("/") ? key : "/api/assets?key=" + encodeURIComponent(key);
@@ -96,7 +97,7 @@ function demoRoom() {
   }
   return g;
 }
-const NO_SPOT = "这里放不下：对准地面，或桌面、床面这样的台面再放。";
+const NO_SPOT = () => pick(currentLang())("这里放不下：对准地面，或桌面、床面这样的台面再放。", "Nothing can go there. Aim at the floor or at a top, like a desk or a bed.");
 type Move = { id: string; position: [number, number, number] };
 /** What the page can ask the 3D view about how pieces rest on each other. */
 export type PlacementApi = {
@@ -257,11 +258,11 @@ export default function Scene(props: Props) {
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.NeutralToneMapping;
     renderer.toneMappingExposure = 1.05;
     el.appendChild(renderer.domElement);
-    renderer.domElement.setAttribute("aria-label", "房间三维画布");
+    renderer.domElement.setAttribute("aria-label", pick(currentLang())("房间三维画布", "3D view of the room"));
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0.65, 0);
     controls.enableDamping = true;
@@ -534,7 +535,7 @@ export default function Scene(props: Props) {
       if (pending && e.button === 0 && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 5) {
         const p = landing(e, new Set([pending]));
         if (p) live.current.onPlace(pending, p.toArray() as [number, number, number]);
-        else live.current.onHint?.(NO_SPOT);
+        else live.current.onHint?.(NO_SPOT());
       }
       if (dragging) {
         const obj = objects.get(dragging)!;
@@ -592,7 +593,7 @@ export default function Scene(props: Props) {
       const pending = live.current.pending;
       const p = landing(e, new Set(pending ? [pending] : []));
       if (id && p) live.current.onPlace(id, p.toArray() as [number, number, number]);
-      else if (id) live.current.onHint?.(NO_SPOT);
+      else if (id) live.current.onHint?.(NO_SPOT());
       ring.visible = false;
       if (ghost) ghost.visible = false;
       mark();
@@ -898,13 +899,13 @@ export default function Scene(props: Props) {
               .then(() => !e.disposed() && live.current.onFloorDetected?.(detectFloorFromSplats(splat as never, eye)))
               .catch(() => live.current.onFloorDetected?.(null));
           splat.initialized.catch(() =>
-            props.onError("空间加载失败，请刷新重试。"),
+            props.onError(pick(currentLang())("空间加载失败，请刷新重试。", "The room failed to load. Refresh to try again.")),
           );
           e.syncErasures();
           e.cleanSig = undefined;
           e.loadClean();
         })
-        .catch(() => props.onError("空间渲染器加载失败。"));
+        .catch(() => props.onError(pick(currentLang())("空间渲染器加载失败。", "The 3D renderer failed to load.")));
     } else e.setRoom(new THREE.Group());
   }, [props.project.id, props.project.mode, props.project.room?.splat]);
   useEffect(() => {
@@ -1019,7 +1020,7 @@ export default function Scene(props: Props) {
               e.mark();
             },
             undefined,
-            () => props.onError(item.name + " 模型加载失败，可刷新重试。"),
+            () => props.onError(pick(currentLang())(item.name + " 模型加载失败，可刷新重试。", `The model of ${item.name} failed to load. Refresh to try again.`)),
           );
         }
       }

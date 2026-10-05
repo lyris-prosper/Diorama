@@ -39,32 +39,35 @@ import {
   ArrowDownToLine,
 } from "lucide-react";
 import { MAX_ITEMS, type Project, type Item, type Branch, type Candidate, type Task, type Erasure, type Dims } from "@/lib/types";
-import { availabilityLabel, catalogItem, formatOriginal, formatPrice, formatUSD, marketLabel } from "@/lib/catalog";
+import { availabilityLabel, buyNoteText, catalogItem, dimsText, formatOriginal, formatPrice, formatUSD, itemName, marketLabel, variantText } from "@/lib/catalog";
+import { currentLang, pick, useDocumentLang, useLang, type T } from "@/lib/i18n";
+import { DEMO_ROOM, demoPieceAt, demoPieceFor, spaceName } from "@/lib/demo-room";
+import { pieceName } from "@/lib/furniture-kinds";
+import Landing from "./Landing";
+import LangToggle from "./LangToggle";
 import { productPhoto } from "@/lib/photo";
 import CatalogPanel from "./CatalogPanel";
 import AddFurnitureDialog, { type NewPiece } from "./AddFurnitureDialog";
 import FurnitureInputs from "./FurnitureInputs";
 import type { FloorFit, PlacementApi } from "./Scene";
-import SpacesDialog, { ContinueCard, type SpaceSummary } from "./SpacesDialog";
+import SpacesDialog, { type SpaceSummary } from "./SpacesDialog";
 import {
   prepareImages,
   canvas,
   blob,
   loadImage,
 } from "@/lib/image";
-const Scene = dynamic(() => import("./Scene"), {
-  ssr: false,
-  loading: () => (
+function CanvasLoading() {
+  const { t } = useLang();
+  return (
     <div className="canvas-loading">
       <Loader2 className="spin" />
-      正在准备画布
+      {t("正在准备画布", "Preparing the canvas")}
     </div>
-  ),
-});
-const Maquette = dynamic(() => import("./Maquette"), {
-  ssr: false,
-  loading: () => <div className="maquette" />,
-});
+  );
+}
+const Scene = dynamic(() => import("./Scene"), { ssr: false, loading: () => <CanvasLoading /> });
+const TITLE = { zh: "方寸 · 不用搬，就能换个摆法", en: "Diorama — Rearrange your room" };
 function Mark() {
   // An isometric room corner: two walls and a floor, as on a model board.
   return (
@@ -140,14 +143,15 @@ const macSafari = () =>
   /Safari\//.test(navigator.userAgent) &&
   !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(navigator.userAgent);
 const SAFARI_OK = "room.safari-ok";
+// Requests say which language the page is in, so the server answers (and fails) in it.
 async function api(body: any): Promise<any> {
   const r = await fetch("/api/workbench", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-lang": currentLang() },
     body: JSON.stringify(body),
   });
   const j: any = await r.json();
-  if (!r.ok) throw Error(j.error || "操作失败，请重试。");
+  if (!r.ok) throw Error(j.error || pick(currentLang())("操作失败，请重试。", "That didn't work. Please try again."));
   return j;
 }
 async function upload(id: string, role: string, file: Blob): Promise<any> {
@@ -155,13 +159,37 @@ async function upload(id: string, role: string, file: Blob): Promise<any> {
   f.append("id", id);
   f.append("role", role);
   f.append("file", file, "image.png");
-  const r = await fetch("/api/workbench", { method: "POST", body: f });
+  const r = await fetch("/api/workbench", { method: "POST", body: f, headers: { "x-lang": currentLang() } });
   const j: any = await r.json();
   if (!r.ok) throw Error(j.error);
   return j;
 }
+/** SHA-256 of a file, as the server names uploads: the same file can be recognised before it is sent. */
+async function sha256(file: Blob) {
+  const d = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(d), (n) => n.toString(16).padStart(2, "0")).join("");
+}
+/**
+ * Room photos above 10 MB or 4096 px are scaled to 2560 px instead of refused. Anything smaller goes
+ * as it is, byte for byte, so a known photo (the sample bedroom) is still recognised by its SHA-256.
+ */
+async function roomPhoto(file: File): Promise<Blob> {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(src);
+    const long = Math.max(img.width, img.height);
+    if (file.size <= 10 * 1024 * 1024 && long <= 4096) return file;
+    const k = 2560 / long;
+    const c = canvas(Math.round(img.width * k), Math.round(img.height * k));
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise<Blob>((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(Error("encode"))), "image/jpeg", 0.92));
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
 /** Height above the floor in cm, typed directly: hanging a shelf at 150 cm should not take 30 clicks. */
 function LiftInput({ id, value, onCommit }: { id: string; value: number; onCommit: (cm: number) => void }) {
+  const { t } = useLang();
   const [draft, setDraft] = useState(String(value));
   const commit = () => {
     const v = Math.round(Number(draft));
@@ -173,7 +201,7 @@ function LiftInput({ id, value, onCommit }: { id: string; value: number; onCommi
       <input
         id={id}
         inputMode="numeric"
-        aria-label="离地高度（厘米）"
+        aria-label={t("离地高度（厘米）", "Height above the floor (cm)")}
         value={draft}
         onFocus={(e) => e.target.select()}
         onChange={(e) => setDraft(e.target.value)}
@@ -187,8 +215,12 @@ function LiftInput({ id, value, onCommit }: { id: string; value: number; onCommi
 const canResume = (t: Task) => !!t.providerId && !t.output?.terminal;
 const canRetry = (t: Task) => ["failed", "paused", "uncertain"].includes(t.status) &&
   (canResume(t) || (t.status === "failed" && (t.output?.terminal || t.output?.definiteRejection) && t.attempt < 3));
-const retryLabel = (t: Task) => canResume(t) ? "继续查询原任务（不重新生成）" : `重新生成（预计 ${t.estimatedCredits ?? 0} 积分）`;
+const retryLabel = (task: Task, t: T) =>
+  canResume(task) ? t("继续查询原任务（不重新生成）", "Keep checking the original job (no new generation)") : t(`重新生成（预计 ${task.estimatedCredits ?? 0} 积分）`, `Generate again (about ${task.estimatedCredits ?? 0} credits)`);
+const MARBLE = "https://marble.worldlabs.ai";
 export default function Workbench() {
+  const { lang, t } = useLang();
+  useDocumentLang(TITLE);
   const [p, setP] = useState<Project | null>(null),
     [boot, setBoot] = useState(true),
     [busy, setBusy] = useState(false),
@@ -218,7 +250,6 @@ export default function Workbench() {
     [quality, setQuality] = useState<number | null>(null),
     [floorOpen, setFloorOpen] = useState(false),
     [savedAt, setSavedAt] = useState(""),
-    [dragOver, setDragOver] = useState(false),
     [floorDraft, setFloorDraft] = useState(""),
     [floorNote, setFloorNote] = useState(""),
     [importOpen, setImportOpen] = useState(false),
@@ -236,6 +267,12 @@ export default function Workbench() {
   const [recognitionMessage, setRecognitionMessage] = useState("");
   const [recognitionPercent, setRecognitionPercent] = useState<number | undefined>();
   const [recognitionError, setRecognitionError] = useState("");
+  // Set when automatic recognition was skipped on purpose (not enough free memory): a note, not an error.
+  const [recognitionSkipped, setRecognitionSkipped] = useState("");
+  // Draft rooms suggest Marble 1.1 once; the note can be closed for this space.
+  const [draftNoteClosed, setDraftNoteClosed] = useState<string | null>(null);
+  // The chosen furniture photo was already made into 3D (the sample bedroom's bed): no credits needed.
+  const [editReuse, setEditReuse] = useState(false);
   const [imageRepair, setImageRepair] = useState<boolean | null>(null);
   const [generationReady, setGenerationReady] = useState({world:false,furniture:false});
   const [repairMessage, setRepairMessage] = useState("");
@@ -265,9 +302,9 @@ export default function Workbench() {
   async function retryTask(taskId: string) {
     const current = stateRef.current;
     const task = current?.tasks.find(t => t.id === taskId);
-    if (!current || !task || !canRetry(task)) throw Error("待核对：此任务不能再次提交，请先核对服务商记录。");
+    if (!current || !task || !canRetry(task)) throw Error(t("待核对：此任务不能再次提交，请先核对服务商记录。", "Needs checking: this job can't be submitted again. Check the provider's records first."));
     const confirmPaid = !canResume(task);
-    if (confirmPaid && !window.confirm(`${retryLabel(task)}？这会创建新任务并可能扣费。`)) return current;
+    if (confirmPaid && !window.confirm(t(`${retryLabel(task, t)}？这会创建新任务并可能扣费。`, `${retryLabel(task, t)}? This creates a new job and may cost credits.`))) return current;
     return api({action:"retry",id:current.id,task:task.id,confirmPaid});
   }
   useEffect(() => {
@@ -322,7 +359,7 @@ export default function Workbench() {
   async function deleteSpace(id: string) {
     await api({ action: "delete-project", id });
     await loadSpaces();
-    setToast("空间已删除。");
+    setToast(t("空间已删除。", "Space deleted."));
   }
   useEffect(() => {
     if (!toast) return;
@@ -403,15 +440,28 @@ export default function Workbench() {
     recognitionAbort.current?.abort();
     const controller = new AbortController();
     recognitionAbort.current = controller;
-    setRecognizing(true); setRecognitionError(""); setRecognitionPercent(undefined);
-    setRecognitionMessage("正在准备家具识别");
+    setRecognitionError(""); setRecognitionSkipped(""); setRecognitionPercent(undefined);
+    // Recognition needs about 3 GB free; on a busy 8 GB Mac it is skipped with a note instead of failing.
+    const local = await localStatus();
+    if (local?.memoryMB !== undefined && local.neededMB && local.memoryMB < local.neededMB.recognize) {
+      if (recognitionAbort.current === controller) recognitionAbort.current = null;
+      setRecognitionSkipped(
+        t(
+          `这台电脑现在可用内存约 ${(local.memoryMB / 1024).toFixed(1)} GB，自动识别需要约 3 GB，已跳过。可以直接生成 3D 房间，或手动圈选家具。`,
+          `About ${(local.memoryMB / 1024).toFixed(1)} GB of memory is free and automatic recognition needs about 3 GB, so it was skipped. Generate the 3D room directly, or outline furniture by hand.`,
+        ),
+      );
+      return;
+    }
+    setRecognizing(true);
+    setRecognitionMessage(t("正在准备家具识别", "Getting furniture recognition ready"));
     try {
       const response = await fetch(url(project.original), {signal:controller.signal});
-      if (!response.ok) throw Error("原图暂时无法读取，请重试。");
+      if (!response.ok) throw Error(t("原图暂时无法读取，请重试。", "The photo can't be read right now. Please try again."));
       const results = await recognizeFurniture(await response.blob(), (message,percent)=>{
         setRecognitionMessage(message); setRecognitionPercent(percent);
       }, controller.signal);
-      setRecognitionMessage("正在保存家具轮廓"); setRecognitionPercent(undefined);
+      setRecognitionMessage(t("正在保存家具轮廓", "Saving the outlines")); setRecognitionPercent(undefined);
       const candidates = [];
       for (let i=0; i<results.length; i++) {
         if (controller.signal.aborted) return;
@@ -423,7 +473,7 @@ export default function Workbench() {
       const next = await api({action:"recognize",id:project.id,original:project.original,candidates});
       if (controller.signal.aborted) return;
       setP(next); setChoices(next.candidates.filter((c:Candidate)=>c.selected).map((c:Candidate)=>c.id));
-      setToast(candidates.length ? `已找到 ${candidates.length} 件候选家具，请核对轮廓。` : "未找到明确家具，可以手动圈选或按空房继续。");
+      setToast(candidates.length ? t(`已找到 ${candidates.length} 件候选家具，请核对轮廓。`, `Found ${candidates.length} possible ${candidates.length === 1 ? "piece" : "pieces"}. Check the outlines.`) : t("未找到明确家具，可以手动圈选或按空房继续。", "No clear furniture found. Outline it by hand, or go on as an empty room."));
     } catch(e) {
       if (!controller.signal.aborted) setRecognitionError((e as Error).message);
     } finally {
@@ -473,19 +523,21 @@ export default function Workbench() {
   async function receive(file?: File) {
     if (!file) return;
     await run(async () => {
-      if (
-        !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
-        file.size > 10 * 1024 * 1024
-      )
-        throw Error("请选择不超过 10 MB 的 JPG、PNG 或 WebP 图片。");
+      if (/heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name))
+        throw Error(t("这是 HEIC 照片，浏览器读不了。请在“照片”里导出为 JPG 再上传。", "This is a HEIC photo, which browsers can't read. Export it as JPG from Photos, then upload."));
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
+        throw Error(t("请选择 JPG、PNG 或 WebP 图片。", "Choose a JPG, PNG or WebP image."));
+      const photo = await roomPhoto(file);
       const next = await create("real");
-      const r = await upload(next.id, "original", file);
-      const source = URL.createObjectURL(file);
+      const r = await upload(next.id, "original", photo);
+      const source = URL.createObjectURL(photo);
       const print = await photoPrint(source).catch(() => null);
       URL.revokeObjectURL(source);
-      const project: Project = print ? await api({ action: "set-print", id: r.project.id, print }) : r.project;
+      const project: Project & { demo?: boolean } = print ? await api({ action: "set-print", id: r.project.id, print }) : r.project;
       setP(project);
       setDrawer(project.stage !== "ready");
+      if (project.demo) setToast(t("认出了这张照片：已打开它的 Marble 1.1 高清房间，没有花积分。", "Recognised this photo: its Marble 1.1 room is open. No credits spent."));
+      else if (project.room) setToast(t("这张照片已经有 3D 房间了，直接打开，没有花积分。", "This photo already has a 3D room, so it opened straight away. No credits spent."));
     });
   }
   function changeItems(items: Item[]) {
@@ -564,7 +616,7 @@ export default function Workbench() {
     setFuture((f) => f.slice(0, -1));
     setDirty(true);
   }
-  const clock = () => new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  const clock = () => new Date().toLocaleTimeString(lang === "en" ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit" });
   // The floor is stored as soon as it is known, so calibration is never lost to an unsaved reload.
   async function persistFloor(floor: Project["floor"], message?: string, roomScale?: number) {
     const current = stateRef.current;
@@ -583,7 +635,7 @@ export default function Workbench() {
     const current = stateRef.current;
     if (!current?.room || current.mode !== "real" || current.floor.confirmed) return;
     if (!fit) {
-      setFloorNote("没能从房间结构里找到地板，请拖动滑块，让网格贴在地板上。");
+      setFloorNote(t("没能从房间结构里找到地板，请拖动滑块，让网格贴在地板上。", "Couldn't find the floor in the room. Drag the slider until the grid sits on the floor."));
       setFloorDraft(String(current.floor.height));
       setFloorOpen(true);
       return;
@@ -600,7 +652,7 @@ export default function Workbench() {
     void persistFloor(
       // 0.4 m margin (in metres, after scaling) on each side of the detected floor footprint.
       { height: r2(fit.height * k), size: Math.min(20, Math.max(2, Math.ceil((fit.size * k + 0.8) * 2) / 2)), confirmed: true },
-      "已自动找到地面，并按真实尺寸校正了房间比例。",
+      t("已自动找到地面，并按真实尺寸校正了房间比例。", "Found the floor and set the room to real-world scale."),
       k === 1 ? undefined : Math.round(current.room.scale * k * 1000) / 1000,
     );
   }
@@ -633,13 +685,8 @@ export default function Workbench() {
       });
       setP(next);
       setDirty(false);
-      setSavedAt(
-        new Date().toLocaleTimeString("zh-CN", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      );
-      setToast("布局已保存，刷新后可继续。");
+      setSavedAt(clock());
+      setToast(t("布局已保存，刷新后可继续。", "Layout saved. It will be here after a refresh."));
     });
   useEffect(() => {
     function key(e: KeyboardEvent) {
@@ -669,6 +716,12 @@ export default function Workbench() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   const item = p?.items.find((i) => i.id === selected);
+  // Names the app gave (library, recognition, the sample room) follow the page language; typed names stay.
+  const displayName = (i: Item) => {
+    const e = i.catalogId ? catalogItem(i.catalogId) : undefined;
+    return e ? itemName(e, lang) : pieceName(i.name, lang);
+  };
+  const taskError = (task: Task) => (lang === "en" ? task.errorEn ?? task.error : task.error) ?? "";
   // The library needs somewhere to put things: the demo room or a generated/imported room.
   const libraryOpen = !!p && (p.mode === "demo" || !!p.room);
   const tab = panel === "library" && libraryOpen ? "library" : "shelf";
@@ -715,11 +768,11 @@ export default function Workbench() {
   }
   async function prepare() {
     if (!p?.original) return;
-    if (imageRepair === false) throw Error("本机的背景修复模型还没装好：请关掉工作台窗口再重新启动，它会自动检查并补全模型。已圈选的家具会保留。");
+    if (imageRepair === false) throw Error(t("本机的背景修复模型还没装好：请关掉工作台窗口再重新启动，它会自动检查并补全模型。已圈选的家具会保留。", "The background repair model isn't installed on this Mac yet. Close the app window and start it again; it checks and completes the models. Your selection is kept."));
     const selected = p.candidates.filter((c) => choices.includes(c.id));
-    if (!selected.length) throw Error("请勾选本次要处理的家具。");
+    if (!selected.length) throw Error(t("请勾选本次要处理的家具。", "Tick the furniture to process."));
     const controller=new AbortController();repairAbort.current=controller;
-    setApproved(false);setRepairMessage("正在准备家具轮廓和透明图片");
+    setApproved(false);setRepairMessage(t("正在准备家具轮廓和透明图片", "Preparing outlines and cut-outs"));
     const r = await prepareImages(p.original, selected);
     const m = await upload(p.id, "union-mask", r.mask);
     const cutouts: Record<string, string> = {},
@@ -731,11 +784,11 @@ export default function Workbench() {
       }
     let localBackground;
     try {
-      if(controller.signal.aborted)throw Error('已取消处理，照片和选择已保留。');
+      if(controller.signal.aborted)throw Error(t('已取消处理，照片和选择已保留。','Cancelled. Your photo and choices are kept.'));
       const original=await fetch(url(p.original),{signal:controller.signal}).then(r=>r.blob());
       const result=await localVisionJob('inpaint',original,r.mask,setRepairMessage,controller.signal);
       if(controller.signal.aborted)return;
-      setRepairMessage("正在保存修复结果");
+      setRepairMessage(t("正在保存修复结果", "Saving the repaired image"));
       localBackground=(await upload(p.id,'local-background',base64Blob(result.image))).key;
     }finally{repairAbort.current=null;setRepairMessage("");}
     setProcessed(null);setProcessedURL("");
@@ -756,7 +809,7 @@ export default function Workbench() {
     if (!p) return;
     let background;
     if (!skip) {
-      if (!processed || !approved) throw Error("请先检查并确认处理后的图片。");
+      if (!processed || !approved) throw Error(t("请先检查并确认处理后的图片。", "Check and confirm the processed image first."));
       background = (await upload(p.id, "background", processed)).key;
     }
     setP(
@@ -782,7 +835,11 @@ export default function Workbench() {
     setSelected(id);
     setPending(null);
     const placed = current.items.find((i) => i.id === id);
-    setToast(placed?.catalogId && catalogItem(placed.catalogId)?.wall ? "这是壁挂家具：拖到墙边，再用“离地”把它挂上去。" : "家具已放置，可直接拖动调整。");
+    setToast(
+      placed?.catalogId && catalogItem(placed.catalogId)?.wall
+        ? t("这是壁挂家具：拖到墙边，再用“离地”把它挂上去。", "This one hangs on a wall: drag it to the wall, then raise it with “Height”.")
+        : t("家具已放置，可直接拖动调整。", "Placed. Drag it to adjust."),
+    );
   }
   function selectCard(i: Item) {
     if (i.status === "placed") {
@@ -792,7 +849,7 @@ export default function Workbench() {
     } else if (i.status === "ready") {
       if (!p?.floor.confirmed) {
         setFloorOpen(true);
-        setToast("先校准地面，再摆放家具。");
+        setToast(t("先校准地面，再摆放家具。", "Set the floor first, then place furniture."));
         return;
       }
       setSelected(null);
@@ -805,7 +862,7 @@ export default function Workbench() {
   );
   function goHome() {
     if (!p) return;
-    if (dirty && !window.confirm("有未保存的调整，确定回到首页吗？")) return;
+    if (dirty && !window.confirm(t("有未保存的调整，确定回到首页吗？", "You have unsaved changes. Go back to the home page anyway?"))) return;
     recognitionAbort.current?.abort();
     repairAbort.current?.abort();
     setP(null);
@@ -828,7 +885,7 @@ export default function Workbench() {
     setImportText("");
     setImportOpen(false);
     setDrawer(false);
-    setToast("已导入 Marble 房间，正在对齐地面。");
+    setToast(t("已导入 Marble 房间，正在对齐地面。", "Marble room imported. Finding the floor."));
   }
   // Clicking furniture in the room: offer to make it editable.
   function pickRoom(point: [number, number, number], screen: { x: number; y: number }, forward: [number, number]) {
@@ -848,12 +905,25 @@ export default function Workbench() {
   }
   function startEdit() {
     if (!roomPick) return;
-    const t = TYPICAL.desk;
-    const base = { w: String(t.w), d: String(t.d), h: String(t.h), pad: 0.12 };
+    // In the sample bedroom a click on a known piece (the bed) starts from its fitted box and size.
+    const known = p?.room?.preset === DEMO_ROOM.id ? demoPieceAt(roomPick.point[0], roomPick.point[2]) : undefined;
+    setEditReuse(false);
+    if (known) {
+      const e = known.erase;
+      setEditDraft({
+        kind: known.kind, name: known.name[lang], w: String(known.dims.w), d: String(known.dims.d), h: String(known.dims.h),
+        pad: 0, photo: null, photoURL: "", agree: false, view: roomPick.forward, mode: "new",
+        erase: { id: "draft", center: [...e.center], size: [...e.size], rotation: e.rotation },
+      });
+      setRoomPick(null);
+      return;
+    }
+    const typical = TYPICAL.desk;
+    const base = { w: String(typical.w), d: String(typical.d), h: String(typical.h), pad: 0.12 };
     const [fx, fz] = roomPick.forward;
-    const reach = t.d / 200;
+    const reach = typical.d / 200;
     setEditDraft({
-      kind: "desk", name: t.name, ...base, photo: null, photoURL: "", agree: false, view: roomPick.forward, mode: "new",
+      kind: "desk", name: lang === "en" ? typical.nameEn : typical.name, ...base, photo: null, photoURL: "", agree: false, view: roomPick.forward, mode: "new",
       erase: eraseBox(base, [roomPick.point[0] + fx * reach, roomPick.point[2] + fz * reach], 0),
     });
     setRoomPick(null);
@@ -862,9 +932,19 @@ export default function Workbench() {
     setEditDraft((cur) => {
       if (!cur) return cur;
       const next = { ...cur, ...change };
-      next.erase = eraseBox(next, [cur.erase.center[0], cur.erase.center[2]], change.erase?.rotation ?? cur.erase.rotation, cur.erase.id);
+      // A box fitted for a known piece stays as fitted until its size or margin is changed.
+      const resized = ["w", "d", "h", "pad"].some((k) => k in change);
+      if (resized) next.erase = eraseBox(next, [cur.erase.center[0], cur.erase.center[2]], change.erase?.rotation ?? cur.erase.rotation, cur.erase.id);
+      else if (change.erase) next.erase = { ...cur.erase, rotation: change.erase.rotation };
       return next;
     });
+  }
+  // Choosing a furniture photo: a photo that was already made into 3D needs no credits.
+  function choosePhoto(f: File) {
+    if (editDraft?.photoURL) URL.revokeObjectURL(editDraft.photoURL);
+    changeEdit({ photo: f, photoURL: URL.createObjectURL(f) });
+    setEditReuse(false);
+    void sha256(f).then((sha) => setEditReuse(!!demoPieceFor(sha)));
   }
   // Move the box 5 cm at a time relative to the view: right/left and further/nearer.
   function nudge(right: number, ahead: number) {
@@ -875,8 +955,8 @@ export default function Workbench() {
     });
   }
   function chooseKind(kind: string) {
-    const t = TYPICAL[kind];
-    changeEdit({ kind, name: t.name, w: String(t.w), d: String(t.d), h: String(t.h) });
+    const typical = TYPICAL[kind];
+    changeEdit({ kind, name: lang === "en" ? typical.nameEn : typical.name, w: String(typical.w), d: String(typical.d), h: String(typical.h) });
   }
   // Refit the erase box of furniture that is already editable: the box's own size is edited directly.
   function adjustErasure(itemId: string) {
@@ -897,20 +977,26 @@ export default function Workbench() {
     const next = await api({ action: "update-erasure", id: p.id, erasure: d.erase });
     setP(next);
     closeEdit();
-    setToast("擦除范围已更新。");
+    setToast(t("擦除范围已更新。", "Erase box updated."));
   }
   function closeEdit() {
     if (editDraft?.photoURL) URL.revokeObjectURL(editDraft.photoURL);
     setEditDraft(null);
+    setEditReuse(false);
   }
   async function submitEdit() {
     const d = editDraft;
     if (!p || !d?.photo) return;
-    const photo = await upload(p.id, "furniture-photo", await productPhoto(d.photo));
+    const image = await productPhoto(d.photo);
+    const photo = await upload(p.id, "furniture-photo", image);
+    const source = URL.createObjectURL(image);
+    const print = await photoPrint(source).catch(() => undefined);
+    URL.revokeObjectURL(source);
     const next = await api({
       action: "edit-furniture",
       id: p.id,
       photo: photo.key,
+      print,
       name: d.name,
       kind: d.kind,
       dims: { w: Number(d.w), d: Number(d.d), h: Number(d.h) },
@@ -918,7 +1004,7 @@ export default function Workbench() {
     });
     setP(next);
     closeEdit();
-    setToast(`已开始生成「${d.name}」，大约 1–3 分钟后会出现在原来的位置。`);
+    setToast(next.note || t(`已开始生成「${d.name}」，大约 1–3 分钟后会出现在原来的位置。`, `Generating “${d.name}”. It appears in its old spot in about 1–3 minutes.`));
   }
   // Pieces the server just created join the local layout without discarding unsaved moves.
   function takeAdded(next: Project & { added?: string | string[] }, undoable: boolean) {
@@ -952,15 +1038,18 @@ export default function Workbench() {
     if (!cur) return;
     const furniture = [];
     for (const [n, f] of pieces.entries()) {
-      progress(pieces.length > 1 ? `正在上传照片 ${n + 1}/${pieces.length}` : "正在上传照片");
+      progress(pieces.length > 1 ? t(`正在上传照片 ${n + 1}/${pieces.length}`, `Uploading photo ${n + 1} of ${pieces.length}`) : t("正在上传照片", "Uploading the photo"));
       const image = (await upload(cur.id, "add-furniture", await productPhoto(f.file))).key;
-      furniture.push({ name: f.name, kind: f.kind, dims: f.dims, image });
+      const source = URL.createObjectURL(f.file);
+      const print = await photoPrint(source).catch(() => undefined);
+      URL.revokeObjectURL(source);
+      furniture.push({ name: f.name, kind: f.kind, dims: f.dims, image, print });
     }
-    progress("正在提交生成任务");
+    progress(t("正在提交生成任务", "Submitting"));
     const next = await api({ action: "add-furniture", id: cur.id, approved: true, furniture });
     takeAdded(next, false);
     setPanel("shelf");
-    setToast(next.note || `已开始生成 ${furniture.length} 件家具，大约 1–3 分钟后出现在家具栏。`);
+    setToast(next.note || t(`已开始生成 ${furniture.length} 件家具，大约 1–3 分钟后出现在家具栏。`, `Generating ${furniture.length} ${furniture.length === 1 ? "piece" : "pieces"}. ${furniture.length === 1 ? "It appears" : "They appear"} on the shelf in about 1–3 minutes.`));
   }
   // A library piece: ready at once. Dropped on the room it is placed there; otherwise it waits for a click on the floor.
   async function addFromCatalog(catalogId: string, at?: [number, number, number]) {
@@ -972,12 +1061,17 @@ export default function Workbench() {
     if (at) {
       setSelected(next.added);
       setPending(null);
-      setToast(entry?.wall ? `已放下「${entry.name}」。它是壁挂的：靠到墙边后，用“离地”把它挂上去。` : `已放下「${entry?.name}」，可以直接拖动调整。`);
+      const name = entry ? itemName(entry, lang) : "";
+      setToast(
+        entry?.wall
+          ? t(`已放下「${name}」。它是壁挂的：靠到墙边后，用“离地”把它挂上去。`, `Placed “${name}”. It hangs on a wall: move it to the wall, then raise it with “Height”.`)
+          : t(`已放下「${name}」，可以直接拖动调整。`, `Placed “${name}”. Drag it to adjust.`),
+      );
     } else if (cur.floor.confirmed) {
       // The placement hint at the top says where to click; no toast on top of it.
       setSelected(null);
       setPending(next.added);
-    } else setToast(`「${entry?.name}」已放进家具栏，地面对齐后就能摆放。`);
+    } else setToast(t(`「${entry ? itemName(entry, lang) : ""}」已放进家具栏，地面对齐后就能摆放。`, `“${entry ? itemName(entry, lang) : ""}” is on the shelf. Place it once the floor is set.`));
   }
   // Empty-room base layer: shown inside erased areas so they show clean floor and wall.
   async function importClean() {
@@ -987,7 +1081,7 @@ export default function Workbench() {
     setCleanText("");
     setCleanOpen(false);
     setDrawer(false);
-    setToast("已导入空房间底图，正在自动对齐。");
+    setToast(t("已导入空房间底图，正在自动对齐。", "Empty-room layer imported. Aligning it."));
   }
   async function saveCleanAlign(fit: { scale: number; yaw?: number; shift: [number, number, number] }, message?: string) {
     const current = stateRef.current;
@@ -1011,70 +1105,142 @@ export default function Workbench() {
     setP({ ...p!, room: { ...p!.room!, clean: { ...c, shift, yaw } } });
     void saveCleanAlign({ scale: c.scale, yaw, shift });
   }
+  // Recognition progress, shown on the photo steps.
+  const recognitionStatus = p && (
+    <div className="recognition-status" role="status" aria-live="polite">
+      <div className="recognition-heading">
+        {recognizing ? <Loader2 className="spin" size={18} /> : recognitionError ? <AlertCircle size={18} /> : <Scan size={18} />}
+        <strong>
+          {recognizing
+            ? recognitionMessage
+            : recognitionError
+              ? t("识别暂未完成", "Recognition didn't finish")
+              : recognitionSkipped
+                ? t("已跳过自动识别", "Automatic recognition skipped")
+                : p.recognitionComplete
+                  ? t(`已找到 ${p.candidates.length} 件候选家具`, `Found ${p.candidates.length} possible ${p.candidates.length === 1 ? "piece" : "pieces"}`)
+                  : t("自动识别家具", "Recognise furniture")}
+        </strong>
+      </div>
+      {recognizing && recognitionPercent !== undefined && <progress max={100} value={recognitionPercent} aria-label={t("模型下载进度", "Model download progress")} />}
+      <p>
+        {recognitionError ||
+          recognitionSkipped ||
+          (recognizing
+            ? t("照片在你的设备上识别，请稍候。", "The photo is being recognised on this Mac. One moment.")
+            : t("点击照片标记或下方名称选择。请检查轮廓；柜子还需确认是否为嵌入式。", "Click a marker on the photo or a name below to choose. Check the outlines; for cabinets, check they aren't built in."))}
+      </p>
+      {recognizing ? (
+        <button
+          className="text-button"
+          onClick={() => {
+            recognitionAbort.current?.abort();
+            setRecognitionError(t("识别已取消，可以重试或手动圈选。", "Recognition cancelled. Try again, or outline by hand."));
+          }}
+        >
+          {t("取消识别", "Cancel")}
+        </button>
+      ) : (
+        <button className="text-button" disabled={busy || running} onClick={() => p && void autoRecognize(p)}>
+          {t("重新自动识别", "Recognise again")}
+        </button>
+      )}
+    </div>
+  );
+  // Outlining a piece by hand: its kind, undo the last point, finish.
+  const manualControls = (done: string) => (
+    <div className="manual-controls">
+      <select value={manualName} onChange={(e) => setManualName(e.target.value)} aria-label={t("家具类别", "Kind of furniture")}>
+        {["书桌", "床", "柜子", "椅子", "沙发"].map((n) => (
+          <option key={n} value={n}>
+            {pieceName(n, lang)}
+          </option>
+        ))}
+      </select>
+      <button className="button" onClick={() => setPoints((v) => v.slice(0, -1))}>
+        {t("撤回点", "Undo point")}
+      </button>
+      <button className="button primary" disabled={points.length < 3 || busy} onClick={() => run(addManual)}>
+        {done}
+      </button>
+    </div>
+  );
   const importBlock = (
     <div className="import-world">
       <label className="field-label" htmlFor="marble-source">
-        粘贴 Marble 房间
+        {t("粘贴 Marble 房间", "Paste a Marble room")}
       </label>
       <textarea
         id="marble-source"
         value={importText}
         onChange={(e) => setImportText(e.target.value)}
-        placeholder="在 Marble 打开房间 → 分享 / 嵌入，复制嵌入代码或查看器链接，粘贴到这里"
+        placeholder={t("在 Marble 打开房间 → 分享 / 嵌入，复制嵌入代码或查看器链接，粘贴到这里", "In Marble, open the room → Share / Embed, copy the embed code or viewer link, and paste it here")}
       />
       <button className="button primary full" disabled={busy || !importText.trim()} onClick={() => run(importWorld)}>
         {busy ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
-        {busy ? "正在下载房间文件…" : "导入房间（不消耗积分）"}
+        {busy ? t("正在下载房间文件…", "Downloading the room…") : t("导入房间（不消耗积分）", "Import room (no credits)")}
       </button>
-      <p className="small muted">房间文件会下载到这台电脑（约 10–40 MB），导入后自动对齐地面。原来的 3D 空间会被替换。</p>
+      <p className="small muted">{t("房间文件会下载到这台电脑（约 10–40 MB），导入后自动对齐地面。原来的 3D 空间会被替换。", "The room files download to this Mac (about 10–40 MB) and the floor is found automatically. The current 3D room is replaced.")}</p>
     </div>
   );
   return (
-    <main className={"workbench" + (p ? "" : " at-home")}>
+    <main className={"workbench" + (p ? "" : " at-home")} lang={lang === "en" ? "en" : "zh-CN"}>
       <header className="topbar">
         <div className="title-block">
-          <button className="brand" onClick={goHome} aria-label="房间工作台，回到首页" disabled={!p}>
+          <button className="brand" onClick={goHome} aria-label={t("方寸，回到首页", "Diorama, back to the home page")} disabled={!p}>
             <Mark />
-            <span>房间工作台</span>
+            {lang === "en" ? (
+              <span className="brand-name">Diorama</span>
+            ) : (
+              <span className="brand-name">
+                方寸<small>Diorama</small>
+              </span>
+            )}
           </button>
+          <LangToggle />
           {p && (
             <>
               <span className="slash">/</span>
-              <span className="project-name">{p.name}</span>
+              <span className="project-name">{spaceName(p.name, lang)}</span>
             </>
           )}
-          {p?.mode === "demo" && <span className="badge">示例</span>}
+          {p?.mode === "demo" && <span className="badge">{t("示例", "Sample")}</span>}
         </div>
         <div className="top-actions">
           {p ? (
             <>
               <span className="save-status">
-                {dirty ? "有未保存的调整" : savedAt ? "已保存 " + savedAt : "已恢复空间"}
+                {dirty ? t("有未保存的调整", "Unsaved changes") : savedAt ? t("已保存 ", "Saved ") + savedAt : t("已恢复空间", "Space restored")}
               </span>
-              <button className="icon" title="撤销" aria-label="撤销" disabled={!history.length} onClick={undo}>
+              <button className="icon" title={t("撤销", "Undo")} aria-label={t("撤销", "Undo")} disabled={!history.length} onClick={undo}>
                 <Undo2 />
               </button>
-              <button className="icon" title="重做" aria-label="重做" disabled={!future.length} onClick={redo}>
+              <button className="icon" title={t("重做", "Redo")} aria-label={t("重做", "Redo")} disabled={!future.length} onClick={redo}>
                 <Redo2 />
               </button>
               <span className="divider" />
-              <button className="button ghost" onClick={() => fileRef.current?.click()} disabled={busy || recognizing}>
+              <button
+                className="button ghost"
+                title={t("上传另一张照片，开始一个新空间（当前空间会保留）", "Upload another photo to start a new space (this one is kept)")}
+                onClick={() => fileRef.current?.click()}
+                disabled={busy || recognizing}
+              >
                 <Upload size={16} />
-                换一张照片
+                {t("用新照片开始", "New photo")}
               </button>
               <button className="button primary" onClick={save} disabled={busy}>
                 <Save size={16} />
-                保存
+                {t("保存", "Save")}
               </button>
             </>
           ) : (
             <>
               <button className="text-button" disabled={busy || boot} onClick={demo}>
-                看示例房间
+                {t("看示例房间", "Sample room")}
               </button>
               <button className="button primary" disabled={busy || boot} onClick={() => fileRef.current?.click()}>
                 <Upload size={16} />
-                上传照片
+                {t("上传照片", "Upload photo")}
               </button>
             </>
           )}
@@ -1084,7 +1250,7 @@ export default function Workbench() {
         className="hidden"
         type="file"
         ref={fileRef}
-        accept="image/png,image/jpeg,image/webp"
+        accept="image/png,image/jpeg,image/webp,image/heic,image/heif"
         onChange={(e) => {
           receive(e.target.files?.[0]);
           e.target.value = "";
@@ -1093,20 +1259,25 @@ export default function Workbench() {
       <section className={"workspace " + (!p ? "empty-workspace" : "") + (tab === "library" && !editDraft ? " library-open" : "")}>
         {p?.room && p.mode === "real" && safariHold ? (
           <div className="safari-note" role="alert">
-            <span className="eyebrow">浏览器提示</span>
-            <h2>这个 3D 房间请用 Chrome 打开</h2>
-            <p>Safari 加载 3D 房间时会反复崩溃（这是 Safari 的 WebAssembly 问题，和照片、网络无关）。用 Chrome 或 Edge 打开同一个地址就能正常查看；首页和示例房间在 Safari 里也能用。</p>
+            <span className="eyebrow">{t("浏览器提示", "Browser note")}</span>
+            <h2>{t("这个 3D 房间请用 Chrome 打开", "Please open this 3D room in Chrome")}</h2>
+            <p>
+              {t(
+                "Safari 加载 3D 房间时会反复崩溃（这是 Safari 的 WebAssembly 问题，和照片、网络无关）。用 Chrome 或 Edge 打开同一个地址就能正常查看；首页和示例房间在 Safari 里也能用。",
+                "Safari keeps crashing while it loads 3D rooms (a Safari WebAssembly issue, not your photo or network). Open the same address in Chrome or Edge and it works; the home page and the sample room are fine in Safari.",
+              )}
+            </p>
             <div className="safari-actions">
               <button
                 className="button primary"
                 onClick={() =>
                   void navigator.clipboard
                     .writeText(location.origin)
-                    .then(() => setToast("地址已复制，粘贴到 Chrome 的地址栏打开。"))
-                    .catch(() => setToast("请在 Chrome 里打开 " + location.origin))
+                    .then(() => setToast(t("地址已复制，粘贴到 Chrome 的地址栏打开。", "Address copied. Paste it into Chrome's address bar.")))
+                    .catch(() => setToast(t("请在 Chrome 里打开 ", "Open this in Chrome: ") + location.origin))
                 }
               >
-                复制地址
+                {t("复制地址", "Copy address")}
               </button>
               <button
                 className="text-button"
@@ -1117,7 +1288,7 @@ export default function Workbench() {
                   setSafariHold(false);
                 }}
               >
-                仍然在 Safari 中打开
+                {t("仍然在 Safari 中打开", "Open in Safari anyway")}
               </button>
             </div>
           </div>
@@ -1141,104 +1312,59 @@ export default function Workbench() {
             onRoomPick={pickRoom}
             eraseDraft={editDraft?.erase ?? null}
             onDraftMove={(c) => setEditDraft((cur) => (cur ? { ...cur, erase: { ...cur.erase, center: c } } : cur))}
-            onCleanAligned={(fit) => void saveCleanAlign(fit, "空房间底图已自动对齐，擦除的地方会用它补齐。")}
+            onCleanAligned={(fit) => void saveCleanAlign(fit, t("空房间底图已自动对齐，擦除的地方会用它补齐。", "The empty-room layer is aligned; erased areas are filled from it."))}
           />
         ) : p?.original ? (
           <div className="photo-stage">
-            <img src={url(p.original)} alt="上传的房间原图" />
-            <span>原始照片 · 空间尚未生成</span>
+            <img src={url(p.original)} alt={t("上传的房间原图", "The uploaded room photo")} />
+            <span>{t("原始照片 · 空间尚未生成", "Original photo · no 3D room yet")}</span>
           </div>
         ) : null}
         {p && (
           <div className="workspace-label">
-            <h1>{p.name}</h1>
+            <h1>{spaceName(p.name, lang)}</h1>
             <p>
               {p.mode === "demo"
-                ? "示例房间 · 几何模型，只用于体验摆放"
-                : p.room
-                  ? "生成式空间 · 照片没拍到的地方为推测补全"
-                  : "照片已上传 · 3D 空间还没有生成"}
+                ? t("示例房间 · 几何模型，只用于体验摆放", "Sample room · simple shapes, to try placing")
+                : p.room?.preset
+                  ? t("Marble 1.1 房间 · 照片没拍到的地方为推测补全", "Marble 1.1 room · areas the photo didn't show are inferred")
+                  : p.room
+                    ? t("生成式空间 · 照片没拍到的地方为推测补全", "Generated room · areas the photo didn't show are inferred")
+                    : t("照片已上传 · 3D 空间还没有生成", "Photo uploaded · the 3D room isn't generated yet")}
             </p>
           </div>
         )}
-        {!p && !boot && (
-          <div
-            className={"landing" + (dragOver ? " drag-over" : "")}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              receive(e.dataTransfer.files[0]);
-            }}
-          >
-            <div className="landing-copy">
-              <h1>
-                搬家具之前，
-                <br />
-                先在这里<em>搬一遍</em>。
-              </h1>
-              <p className="lede">
-                上传一张房间照片。工作台会认出照片里的家具，补全被挡住的墙和地板，再把房间和家具变成 3D，让你挪一挪、转一转，比较不同的摆法。
-              </p>
-              <div className="landing-actions">
-                <button className="button primary large" disabled={busy} onClick={() => fileRef.current?.click()}>
-                  <Upload size={17} />
-                  上传房间照片
-                </button>
-                <button className="text-button" disabled={busy} onClick={demo}>
-                  先看示例房间 <ArrowRight size={15} />
-                </button>
-              </div>
-              <p className="fine-print">JPG / PNG / WebP，10 MB 以内，也可以直接拖到页面上。</p>
-              {!!spaces?.length && (
-                <div className="my-spaces">
-                  <ContinueCard space={spaces[0]} onOpen={() => void openSpace(spaces[0].id)} />
-                  <button className="text-button" onClick={() => setSpacesOpen(true)}>
-                    全部 {spaces.length} 个空间
-                  </button>
-                </div>
+        {p?.mode === "real" && p.room && p.room.source !== "imported" && draftNoteClosed !== p.id && !editDraft && !pending && (
+          <div className="draft-note" role="note">
+            <strong>{t("这是草稿版房间", "This is a draft room")}</strong>
+            <span>
+              {t(
+                "想要更清晰逼真的效果，可以去 Marble 官网用 Marble 1.1 模型生成同一张照片，再导入替换（不消耗本工作台积分）。",
+                "For a sharper, more lifelike room, generate the same photo with Marble 1.1 on the Marble website, then import it here (no credits from this app).",
               )}
-              <p className="local-note">
-                <span className="local-dot" />
-                识别、抠图、补全背景都在这台电脑上完成，不上传、不花钱。生成 3D 时才会用到服务商积分。
-              </p>
-            </div>
-            <div className="landing-model">
-              <Maquette />
-              <p className="model-hint">
-                <span>拖动家具试试</span>
-                <span>移动鼠标，日光跟着走</span>
-              </p>
-            </div>
-            <ol className="process">
-              <li>
-                <b>1</b>
-                <strong>认出家具</strong>
-                <span>自动框出床、桌、柜，点一下就能选中或取消。</span>
-              </li>
-              <li>
-                <b>2</b>
-                <strong>补全背景</strong>
-                <span>移走的家具背后，墙面和地板按周围的样子补齐。</span>
-              </li>
-              <li>
-                <b>3</b>
-                <strong>生成 3D</strong>
-                <span>房间和每件家具分别生成，失败的那件可以单独重试。</span>
-              </li>
-              <li>
-                <b>4</b>
-                <strong>重新摆放</strong>
-                <span>把家具拖进房间，旋转、缩放，满意了再保存。</span>
-              </li>
-            </ol>
-            {dragOver && <div className="drop-veil">松开，开始识别这间房</div>}
+            </span>
+            <a className="text-button" href={MARBLE} target="_blank" rel="noopener noreferrer">
+              {t("去 Marble 官网", "Open Marble")} <ArrowUpRight size={13} />
+            </a>
+            <button className="text-button" onClick={() => { setDrawer(true); setImportOpen(true); }}>
+              {t("导入房间", "Import room")}
+            </button>
+            <button className="icon" aria-label={t("关闭提示", "Dismiss")} onClick={() => setDraftNoteClosed(p.id)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        {!p && !boot && (
+          <>
+            <Landing
+              busy={busy}
+              spaces={spaces}
+              onUpload={() => fileRef.current?.click()}
+              onDemo={demo}
+              onOpenSpace={(id) => void openSpace(id)}
+              onAllSpaces={() => setSpacesOpen(true)}
+              onDropFile={(f) => void receive(f)}
+            />
             <SpacesDialog
               open={spacesOpen}
               onOpenChange={setSpacesOpen}
@@ -1247,24 +1373,24 @@ export default function Workbench() {
               onRename={renameSpace}
               onDelete={deleteSpace}
             />
-          </div>
+          </>
         )}
         {boot && (
           <div className="canvas-loading">
             <Loader2 className="spin" />
-            正在打开工作台
+            {t("正在打开", "Opening")}
           </div>
         )}
         {p && (
           <div className="canvas-toolbar">
-            <button className="tool active" title="选择与移动">
+            <button className="tool active" title={t("选择与移动", "Select and move")}>
               <MousePointer2 size={17} />
-              选择
+              {t("选择", "Select")}
             </button>
             <span className="divider" />
             <button className="tool" onClick={() => setReset((v) => v + 1)}>
               <Maximize size={17} />
-              重置视角
+              {t("重置视角", "Reset view")}
             </button>
             {p.mode === "real" && (
               <button
@@ -1275,7 +1401,7 @@ export default function Workbench() {
                 }}
               >
                 <SlidersHorizontal size={17} />
-                校准地面
+                {t("校准地面", "Floor")}
               </button>
             )}
             <button
@@ -1286,7 +1412,7 @@ export default function Workbench() {
               }}
             >
               <Layers size={17} />
-              处理步骤
+              {t("处理步骤", "Steps")}
             </button>
             {(p.mode === "demo" || p.room) && (
               <>
@@ -1297,7 +1423,7 @@ export default function Workbench() {
                   onClick={() => setPanel((v) => (v === "library" ? "shelf" : "library"))}
                 >
                   <Library size={17} />
-                  家具库
+                  {t("家具库", "Library")}
                 </button>
               </>
             )}
@@ -1306,39 +1432,43 @@ export default function Workbench() {
         {pending && (
           <div className="placement-hint">
             <Move size={17} />
-            在地面或桌面上点击，放下 {p?.items.find((i) => i.id === pending)?.name}
+            {t("在地面或桌面上点击，放下 ", "Click the floor or a tabletop to place ")}
+            {(() => {
+              const it = p?.items.find((i) => i.id === pending);
+              return it ? displayName(it) : "";
+            })()}
             <button
               className="icon"
               onClick={() => setPending(null)}
-              aria-label="取消放置"
+              aria-label={t("取消放置", "Cancel placing")}
             >
               <X size={15} />
             </button>
           </div>
         )}
         {p && !editDraft && (p.mode === "demo" || p.room || p.items.length > 0) && (
-          <aside className={"shelf" + (tab === "library" ? " library" : "")} aria-label="家具">
-            <div className="panel-tabs" role="tablist" aria-label="家具栏与家具库">
+          <aside className={"shelf" + (tab === "library" ? " library" : "")} aria-label={t("家具", "Furniture")}>
+            <div className="panel-tabs" role="tablist" aria-label={t("家具栏与家具库", "Shelf and library")}>
               <button role="tab" aria-selected={tab === "shelf"} className={tab === "shelf" ? "on" : ""} onClick={() => setPanel("shelf")}>
                 <Box size={15} />
-                家具栏 <span>{p.items.length}</span>
+                {t("家具栏", "Shelf")} <span>{p.items.length}</span>
               </button>
               <button
                 role="tab"
                 aria-selected={tab === "library"}
                 className={tab === "library" ? "on" : ""}
                 disabled={!libraryOpen}
-                title={libraryOpen ? undefined : "生成或导入 3D 房间后可用"}
+                title={libraryOpen ? undefined : t("生成或导入 3D 房间后可用", "Available once the 3D room is generated or imported")}
                 onClick={() => setPanel("library")}
               >
                 <Library size={15} />
-                家具库
+                {t("家具库", "Library")}
               </button>
             </div>
             {tab === "library" ? (
               <CatalogPanel
                 inRoom={inRoom}
-                blocked={p.items.length >= MAX_ITEMS ? `一个空间最多放 ${MAX_ITEMS} 件家具，先移除几件再添加。` : null}
+                blocked={p.items.length >= MAX_ITEMS ? t(`一个空间最多放 ${MAX_ITEMS} 件家具，先移除几件再添加。`, `A space holds up to ${MAX_ITEMS} pieces. Remove some first.`) : null}
                 onAdd={async (id) => {
                   setError("");
                   try {
@@ -1351,21 +1481,23 @@ export default function Workbench() {
               />
             ) : (
               <>
-                {p.items.length > 0 && <p className="shelf-note">拖进房间，或点一下再选落点</p>}
+                {p.items.length > 0 && <p className="shelf-note">{t("拖进房间，或点一下再选落点", "Drag into the room, or click and then choose a spot")}</p>}
                 {(() => {
                   // What the library pieces in this space would cost, at the listed reference prices.
                   const prices = p.items.flatMap((i) => (i.catalogId ? [catalogItem(i.catalogId)?.price ?? 0] : []));
                   return prices.length > 0 ? (
                     <p className="shelf-total">
-                      家具库商品 {prices.length} 件 · 参考合计 <b>{formatUSD(prices.reduce((a, b) => a + b, 0))}</b>
+                      {t(`家具库商品 ${prices.length} 件 · 参考合计 `, `${prices.length} library ${prices.length === 1 ? "piece" : "pieces"} · about `)}
+                      <b>{formatUSD(prices.reduce((a, b) => a + b, 0))}</b>
+                      {t("", " in total")}
                     </p>
                   ) : null;
                 })()}
                 {p.items.length > 0 && p.mode === "real" && (
                   <button className="add-tile" onClick={() => setAddOpen(true)}>
                     <Plus size={15} />
-                    添加家具
-                    <span>上传照片生成 3D</span>
+                    {t("添加家具", "Add furniture")}
+                    <span>{t("上传照片生成 3D", "From a photo, in 3D")}</span>
                   </button>
                 )}
                 {p.items.length > 0 ? (
@@ -1379,6 +1511,7 @@ export default function Workbench() {
                       const generating = ["queued", "running"].includes(i.status) || ["queued", "running", "submitting"].includes(task?.status ?? "");
                       const entry = i.catalogId ? catalogItem(i.catalogId) : undefined;
                       const meta = entry ? `${entry.shop} · ${formatPrice(entry)}` : i.dims ? `${i.dims.w} × ${i.dims.d} × ${i.dims.h} cm` : "";
+                      const name = displayName(i);
                       return (
                         <article
                           key={i.id}
@@ -1397,7 +1530,7 @@ export default function Workbench() {
                           {!generating && (
                             <button
                               className="remove-card"
-                              aria-label={"移除" + i.name}
+                              aria-label={t("移除" + name, "Remove " + name)}
                               disabled={busy || recognizing}
                               onPointerDown={(e) => e.stopPropagation()}
                               onMouseDown={(e) => e.stopPropagation()}
@@ -1419,7 +1552,7 @@ export default function Workbench() {
                             {thumbs[i.id] || i.thumbnail ? (
                               <img
                                 src={thumbs[i.id] || url(i.thumbnail)}
-                                alt={i.name}
+                                alt={name}
                               />
                             ) : (
                               <div className="model-wait">
@@ -1432,24 +1565,24 @@ export default function Workbench() {
                             )}
                           </div>
                           <div className="card-caption">
-                            <strong>{i.name}</strong>
+                            <strong>{name}</strong>
                             <span className={"item-status " + status}>
                               {status === "placed" ? (
                                 <>
                                   <Check size={12} />
-                                  已摆放
+                                  {t("已摆放", "Placed")}
                                 </>
                               ) : status === "ready" ? (
-                                "待摆放"
+                                t("待摆放", "To place")
                               ) : status === "failed" ? (
-                                "失败"
+                                t("失败", "Failed")
                               ) : (
-                                "生成中"
+                                t("生成中", "Generating")
                               )}
                             </span>
                           </div>
                           {meta && <span className="card-meta">{meta}</span>}
-                          {status === "failed" && task && <p className="small muted">{task.error}</p>}
+                          {status === "failed" && task && <p className="small muted">{taskError(task)}</p>}
                           {task && canRetry(task) && (
                             <button
                               className="text-button"
@@ -1462,7 +1595,7 @@ export default function Workbench() {
                                 );
                               }}
                             >
-                              {retryLabel(task)}
+                              {retryLabel(task, t)}
                             </button>
                           )}
                         </article>
@@ -1472,17 +1605,17 @@ export default function Workbench() {
                 ) : (
                   <div className="empty-shelf">
                     <Box size={24} />
-                    <h2>想挪动或添置家具？</h2>
-                    <p>在房间里点一下照片里的家具，上传它的照片，就能变成可以移动的 3D 模型。</p>
+                    <h2>{t("想挪动或添置家具？", "Move or add furniture?")}</h2>
+                    <p>{t("在房间里点一下照片里的家具，上传它的照片，就能变成可以移动的 3D 模型。", "Click a piece in the room and upload a photo of it: it becomes a 3D model you can move.")}</p>
                     <div className="empty-actions">
                       <button className="button primary" disabled={!libraryOpen} onClick={() => setPanel("library")}>
                         <Library size={15} />
-                        从家具库挑一件
+                        {t("从家具库挑一件", "Pick from the library")}
                       </button>
                       {p.mode === "real" && (
                         <button className="text-button" onClick={() => setAddOpen(true)}>
                           <Plus size={14} />
-                          上传照片添加新家具
+                          {t("上传照片添加新家具", "Add new furniture from a photo")}
                         </button>
                       )}
                     </div>
@@ -1491,7 +1624,7 @@ export default function Workbench() {
                 {p.items.length > 0 && (
                   <div className="shelf-footer">
                     <Info size={14} />
-                    填了尺寸的按真实大小摆放，其余为估计
+                    {t("填了尺寸的按真实大小摆放，其余为估计", "Pieces with sizes are true to scale; the rest are estimates")}
                   </div>
                 )}
               </>
@@ -1502,45 +1635,53 @@ export default function Workbench() {
           <AddFurnitureDialog
             open={addOpen}
             onOpenChange={setAddOpen}
-            ready={p.mode !== "real" ? "示例房间不生成新家具，可以从家具库挑选。" : !generationReady.furniture ? "尚未配置 Tripo，暂时不能生成家具。可以先从家具库挑选。" : null}
+            ready={
+              p.mode !== "real"
+                ? t("示例房间不生成新家具，可以从家具库挑选。", "The sample room doesn't generate furniture. Pick from the library instead.")
+                : !generationReady.furniture
+                  ? t("尚未配置 Tripo，暂时不能生成家具。可以先从家具库挑选。", "Tripo isn't set up, so furniture can't be generated yet. Pick from the library meanwhile.")
+                  : null
+            }
             onSubmit={addPieces}
           />
         )}
         {roomPick && (
-          <div className="pick-pop" style={{ left: roomPick.x, top: roomPick.y }} role="dialog" aria-label="把家具变成可编辑">
-            <strong>把它变成可编辑的家具？</strong>
-            <p>上传这件家具的照片，会生成 3D 模型放回原处，之后就能挪动它。</p>
+          <div className="pick-pop" style={{ left: roomPick.x, top: roomPick.y }} role="dialog" aria-label={t("把家具变成可编辑", "Make this piece movable")}>
+            <strong>{t("把它变成可编辑的家具？", "Make this piece movable?")}</strong>
+            <p>{t("上传这件家具的照片，会生成 3D 模型放回原处，之后就能挪动它。", "Upload a photo of it: a 3D model takes its place, and then you can move it.")}</p>
             <div className="pick-actions">
               <button className="button primary" onClick={startEdit}>
-                是，上传照片
+                {t("是，上传照片", "Yes, upload a photo")}
               </button>
               <button className="text-button" onClick={() => setRoomPick(null)}>
-                取消
+                {t("取消", "Cancel")}
               </button>
             </div>
           </div>
         )}
         {editDraft && (
-          <aside className="shelf edit-panel" aria-label="变成可编辑家具">
+          <aside className="shelf edit-panel" aria-label={t("变成可编辑家具", "Make a piece movable")}>
             <div className="shelf-heading">
-              <h2>{editDraft.mode === "adjust" ? "调整擦除范围" : "变成可编辑家具"}</h2>
-              <button className="icon" aria-label="取消" onClick={closeEdit}>
+              <h2>{editDraft.mode === "adjust" ? t("调整擦除范围", "Adjust the erase box") : t("变成可编辑家具", "Make it movable")}</h2>
+              <button className="icon" aria-label={t("取消", "Cancel")} onClick={closeEdit}>
                 <X size={16} />
               </button>
             </div>
-            <p className="shelf-note">拖动房间里的蓝色方框，直到原来的家具完全消失（连同靠墙的部分和床头）。</p>
+            <p className="shelf-note">
+              {t("拖动房间里的蓝色方框，直到原来的家具完全消失（连同靠墙的部分和床头）。", "Drag the blue box in the room until the old piece is completely gone (including the headboard and what touches the wall).")}
+            </p>
             <div className="edit-body">
               {editDraft.mode === "new" && (
               <>
               <div className="kind-chips">
-                {Object.entries(TYPICAL).map(([k, t]) => (
+                {Object.entries(TYPICAL).map(([k, typical]) => (
                   <button key={k} className={editDraft.kind === k ? "chosen" : ""} aria-pressed={editDraft.kind === k} onClick={() => chooseKind(k)}>
-                    {t.name}
+                    {lang === "en" ? typical.nameEn : typical.name}
                   </button>
                 ))}
               </div>
               <label className="edit-field">
-                <span>名称</span>
+                <span>{t("名称", "Name")}</span>
                 <input value={editDraft.name} maxLength={24} onChange={(e) => changeEdit({ name: e.target.value })} />
               </label>
               </>
@@ -1548,7 +1689,11 @@ export default function Workbench() {
               <div className="dims">
                 {(["w", "d", "h"] as const).map((k) => (
                   <label key={k}>
-                    <span>{(editDraft.mode === "adjust" ? { w: "范围宽", d: "范围深", h: "范围高" } : { w: "宽", d: "深", h: "高" })[k]}</span>
+                    <span>
+                      {(editDraft.mode === "adjust"
+                        ? { w: t("范围宽", "Box W"), d: t("范围深", "Box D"), h: t("范围高", "Box H") }
+                        : { w: t("宽", "W"), d: t("深", "D"), h: t("高", "H") })[k]}
+                    </span>
                     <input inputMode="decimal" value={editDraft[k]} onChange={(e) => changeEdit({ [k]: e.target.value } as Partial<EditDraft>)} />
                     <em>cm</em>
                   </label>
@@ -1557,43 +1702,43 @@ export default function Workbench() {
               {editDraft.mode === "new" && (
                 <div className="edit-field">
                   <span>
-                    擦除范围再放宽 <b>{Math.round(editDraft.pad * 100)} cm</b>
+                    {t("擦除范围再放宽 ", "Extra margin ")}<b>{Math.round(editDraft.pad * 100)} cm</b>
                   </span>
-                  <input type="range" min={0} max={0.4} step={0.01} value={editDraft.pad} aria-label="擦除范围外扩" onChange={(e) => changeEdit({ pad: Number(e.target.value) })} />
+                  <input type="range" min={0} max={0.4} step={0.01} value={editDraft.pad} aria-label={t("擦除范围外扩", "Erase box margin")} onChange={(e) => changeEdit({ pad: Number(e.target.value) })} />
                 </div>
               )}
               <div className="rotate-row">
-                <span>方向</span>
-                <button className="icon" aria-label="向左转 5 度" onClick={() => changeEdit({ erase: { ...editDraft.erase, rotation: editDraft.erase.rotation + Math.PI / 36 } })}>
+                <span>{t("方向", "Turn")}</span>
+                <button className="icon" aria-label={t("向左转 5 度", "Turn 5° left")} onClick={() => changeEdit({ erase: { ...editDraft.erase, rotation: editDraft.erase.rotation + Math.PI / 36 } })}>
                   <RotateCcw />
                 </button>
                 <span className="value">{Math.round((((editDraft.erase.rotation * 180) / Math.PI) % 360 + 360) % 360)}°</span>
-                <button className="icon" aria-label="向右转 5 度" onClick={() => changeEdit({ erase: { ...editDraft.erase, rotation: editDraft.erase.rotation - Math.PI / 36 } })}>
+                <button className="icon" aria-label={t("向右转 5 度", "Turn 5° right")} onClick={() => changeEdit({ erase: { ...editDraft.erase, rotation: editDraft.erase.rotation - Math.PI / 36 } })}>
                   <RotateCw />
                 </button>
                 <button className="text-button" onClick={() => changeEdit({ erase: { ...editDraft.erase, rotation: editDraft.erase.rotation + Math.PI / 2 } })}>
-                  转 90°
+                  {t("转 90°", "Turn 90°")}
                 </button>
               </div>
               <div className="nudge-row">
-                <span>位置</span>
-                <button className="icon" aria-label="方框往左 5 厘米" onClick={() => nudge(-0.05, 0)}>
+                <span>{t("位置", "Move")}</span>
+                <button className="icon" aria-label={t("方框往左 5 厘米", "Box 5 cm left")} onClick={() => nudge(-0.05, 0)}>
                   <ChevronLeft />
                 </button>
-                <button className="icon" aria-label="方框往里 5 厘米" onClick={() => nudge(0, 0.05)}>
+                <button className="icon" aria-label={t("方框往里 5 厘米", "Box 5 cm further")} onClick={() => nudge(0, 0.05)}>
                   <ChevronDown style={{ transform: "rotate(180deg)" }} />
                 </button>
-                <button className="icon" aria-label="方框往外 5 厘米" onClick={() => nudge(0, -0.05)}>
+                <button className="icon" aria-label={t("方框往外 5 厘米", "Box 5 cm nearer")} onClick={() => nudge(0, -0.05)}>
                   <ChevronDown />
                 </button>
-                <button className="icon" aria-label="方框往右 5 厘米" onClick={() => nudge(0.05, 0)}>
+                <button className="icon" aria-label={t("方框往右 5 厘米", "Box 5 cm right")} onClick={() => nudge(0.05, 0)}>
                   <ChevronLeft style={{ transform: "rotate(180deg)" }} />
                 </button>
               </div>
               {editDraft.mode === "adjust" ? (
                 <button className="button primary full" disabled={busy} onClick={() => run(saveErasure)}>
                   {busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-                  保存擦除范围
+                  {t("保存擦除范围", "Save the erase box")}
                 </button>
               ) : (
               <>
@@ -1604,19 +1749,16 @@ export default function Workbench() {
                 onDrop={(e) => {
                   e.preventDefault();
                   const f = e.dataTransfer.files[0];
-                  if (f?.type.startsWith("image/")) {
-                    if (editDraft.photoURL) URL.revokeObjectURL(editDraft.photoURL);
-                    changeEdit({ photo: f, photoURL: URL.createObjectURL(f) });
-                  }
+                  if (f?.type.startsWith("image/")) choosePhoto(f);
                 }}
               >
                 {editDraft.photoURL ? (
-                  <img src={editDraft.photoURL} alt="家具照片" />
+                  <img src={editDraft.photoURL} alt={t("家具照片", "Furniture photo")} />
                 ) : (
                   <>
                     <ImageIcon size={22} />
-                    <strong>上传这件家具的照片</strong>
-                    <span>白底或干净背景、拍到全貌、没有遮挡</span>
+                    <strong>{t("上传这件家具的照片", "Upload a photo of this piece")}</strong>
+                    <span>{t("白底或干净背景、拍到全貌、没有遮挡", "Plain backdrop, the whole piece, nothing in front")}</span>
                   </>
                 )}
               </button>
@@ -1627,24 +1769,28 @@ export default function Workbench() {
                 accept="image/png,image/jpeg,image/webp"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) {
-                    if (editDraft.photoURL) URL.revokeObjectURL(editDraft.photoURL);
-                    changeEdit({ photo: f, photoURL: URL.createObjectURL(f) });
-                  }
+                  if (f) choosePhoto(f);
                   e.target.value = "";
                 }}
               />
-              <label className="approve">
-                <input type="checkbox" checked={editDraft.agree} onChange={(e) => changeEdit({ agree: e.target.checked })} />
-                用 Tripo 生成 3D 模型，预计消耗约 30 积分
-              </label>
+              {editReuse ? (
+                <p className="reuse-note">
+                  <CheckCircle2 size={15} />
+                  {t("这张照片之前已经生成过 3D 模型，直接复用，不消耗积分。", "This photo was already made into 3D, so its model is reused. No credits.")}
+                </p>
+              ) : (
+                <label className="approve">
+                  <input type="checkbox" checked={editDraft.agree} onChange={(e) => changeEdit({ agree: e.target.checked })} />
+                  {t("用 Tripo 生成 3D 模型，预计消耗约 30 积分", "Generate the 3D model with Tripo, about 30 credits")}
+                </label>
+              )}
               <button
                 className="button primary full"
-                disabled={busy || !editDraft.photo || !editDraft.agree || !editDraft.name.trim()}
+                disabled={busy || !editDraft.photo || !(editDraft.agree || editReuse) || !editDraft.name.trim()}
                 onClick={() => run(submitEdit)}
               >
                 {busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-                擦除原家具并生成
+                {editReuse ? t("擦除原家具并放回模型", "Erase the old piece and put the model in") : t("擦除原家具并生成", "Erase the old piece and generate")}
               </button>
               </>
               )}
@@ -1655,10 +1801,10 @@ export default function Workbench() {
           <div className={"reference " + (!reference ? "collapsed" : "")}>
             <button onClick={() => setReference((v) => !v)}>
               <ImageIcon size={15} />
-              原图参考
+              {t("原图参考", "Photo")}
               <ChevronDown size={15} />
             </button>
-            {reference && <img src={url(p.original)} alt="房间原图参考" />}
+            {reference && <img src={url(p.original)} alt={t("房间原图参考", "The room photo, for reference")} />}
           </div>
         )}
         {item?.status === "placed" && p && (() => {
@@ -1680,17 +1826,23 @@ export default function Workbench() {
           return (
             <div className="inspector">
               <div className="inspector-title">
-                <strong>{item.name}</strong>
-                <span>{entry ? `${entry.shop} · ${formatPrice(entry)}` : item.source === "upload" ? "你上传的家具" : "当前 3D 对象"}</span>
+                <strong>{displayName(item)}</strong>
+                <span>{entry ? `${entry.shop} · ${formatPrice(entry)}` : item.source === "upload" ? t("你上传的家具", "Your upload") : t("当前 3D 对象", "3D object")}</span>
                 {entry && (
-                  <a className="buy-link" href={entry.link} target="_blank" rel="noopener noreferrer" title={`打开 ${entry.shop} ${marketLabel(entry)}的商品页（新标签页）`}>
-                    去官网
+                  <a
+                    className="buy-link"
+                    href={entry.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={t(`打开 ${entry.shop} ${marketLabel(entry)}的商品页（新标签页）`, `Open the product page on the ${entry.shop} ${marketLabel(entry, "en")} (new tab)`)}
+                  >
+                    {t("去官网", "Shop")}
                     <ArrowUpRight size={13} />
                   </a>
                 )}
                 <button
                   className="icon"
-                  aria-label="取消选中"
+                  aria-label={t("取消选中", "Deselect")}
                   onClick={() => setSelected(null)}
                 >
                   <X size={15} />
@@ -1698,22 +1850,22 @@ export default function Workbench() {
               </div>
               {entry && (
                 <p className="inspector-offer">
-                  {marketLabel(entry)}标价 {formatOriginal(entry)} · {entry.variant}
-                  {availabilityLabel(entry) && (
+                  {t(`${marketLabel(entry)}标价 ${formatOriginal(entry)}`, `${formatOriginal(entry)} on the ${marketLabel(entry, "en")}`)} · {variantText(entry, lang)}
+                  {availabilityLabel(entry, lang) && (
                     <>
                       {" · "}
-                      <em>{availabilityLabel(entry)}</em>
+                      <em>{availabilityLabel(entry, lang)}</em>
                     </>
                   )}
-                  {entry.buyNote && ` · ${entry.buyNote}`}
-                  {entry.memberOffer && ` · ${entry.memberOffer.label} ${formatUSD(entry.memberOffer.price)}`}
+                  {buyNoteText(entry, lang) && ` · ${buyNoteText(entry, lang)}`}
+                  {entry.memberOffer && ` · ${lang === "en" ? entry.memberOffer.labelEn : entry.memberOffer.label} ${formatUSD(entry.memberOffer.price)}`}
                 </p>
               )}
               <div className="inspector-row">
-                <label>旋转</label>
+                <label>{t("旋转", "Turn")}</label>
                 <button
                   className="icon"
-                  aria-label="向左旋转"
+                  aria-label={t("向左旋转", "Turn left")}
                   onClick={() => turn(item, -Math.PI / 12)}
                 >
                   <RotateCcw />
@@ -1723,48 +1875,50 @@ export default function Workbench() {
                 </span>
                 <button
                   className="icon"
-                  aria-label="向右旋转"
+                  aria-label={t("向右旋转", "Turn right")}
                   onClick={() => turn(item, Math.PI / 12)}
                 >
                   <RotateCw />
                 </button>
                 <span className="divider" />
-                <label>比例</label>
+                <label>{t("比例", "Scale")}</label>
                 <button
                   className="icon"
-                  aria-label="缩小家具"
+                  aria-label={t("缩小家具", "Smaller")}
                   onClick={() => resize({ scale: Math.max(0.1, Math.round((item.scale - 0.1) * 10) / 10) })}
                 >
                   <Minus />
                 </button>
                 <button
                   className="value reset-scale"
-                  title="恢复初始比例"
+                  title={t("恢复初始比例", "Back to 100%")}
                   onClick={() => resize({ scale: 1 })}
                 >
                   {Math.round(item.scale * 100)}%
                 </button>
                 <button
                   className="icon"
-                  aria-label="放大家具"
+                  aria-label={t("放大家具", "Larger")}
                   onClick={() => resize({ scale: Math.min(5, Math.round((item.scale + 0.1) * 10) / 10) })}
                 >
                   <Plus />
                 </button>
                 <span className="divider" />
-                <label htmlFor="lift-input" title="壁挂的搁板、挂钩可以挂到墙上">离地</label>
-                <button className="icon" aria-label="降低 5 厘米" disabled={lift <= 0} onClick={() => raise(-5)}>
+                <label htmlFor="lift-input" title={t("壁挂的搁板、挂钩可以挂到墙上", "Raise shelves and hooks onto a wall")}>
+                  {t("离地", "Height")}
+                </label>
+                <button className="icon" aria-label={t("降低 5 厘米", "5 cm lower")} disabled={lift <= 0} onClick={() => raise(-5)}>
                   <Minus />
                 </button>
                 <LiftInput key={item.id + ":" + lift} id="lift-input" value={lift} onCommit={(cm) => raise(cm - lift)} />
-                <button className="icon" aria-label="升高 5 厘米" onClick={() => raise(5)}>
+                <button className="icon" aria-label={t("升高 5 厘米", "5 cm higher")} onClick={() => raise(5)}>
                   <Plus />
                 </button>
               </div>
               <div className="inspector-row secondary">
                 {item.dims ? (
-                  <span className="size-readout" title={entry ? `标称 ${entry.dimsLabel}` : "你填写的尺寸"}>
-                    <label>尺寸</label>
+                  <span className="size-readout" title={entry ? t(`标称 ${dimsText(entry, lang)}`, `Listed ${dimsText(entry, lang)}`) : t("你填写的尺寸", "The size you gave")}>
+                    <label>{t("尺寸", "Size")}</label>
                     <b>
                       {size(item.dims.w)} × {size(item.dims.d)} × {size(item.dims.h)}
                     </b>
@@ -1772,13 +1926,13 @@ export default function Workbench() {
                   </span>
                 ) : (
                   <>
-                    <label>初始高度（估计）</label>
+                    <label>{t("初始高度（估计）", "Height (estimate)")}</label>
                     <input
                       type="number"
                       min=".1"
                       max="5"
                       step=".05"
-                      aria-label="家具初始高度"
+                      aria-label={t("家具初始高度", "Estimated height")}
                       value={item.height}
                       onChange={(e) => resize({ height: Number(e.target.value) || 1 })}
                     />
@@ -1787,15 +1941,15 @@ export default function Workbench() {
                 )}
                 <div className="inspector-actions">
                 {floating && (
-                  <button className="tool" title="落到下面的桌面、床面或地面" onClick={() => liftBy(rest - item.position[1])}>
+                  <button className="tool" title={t("落到下面的桌面、床面或地面", "Drop onto the desk, bed or floor below")} onClick={() => liftBy(rest - item.position[1])}>
                     <ArrowDownToLine size={15} />
-                    落下
+                    {t("落下", "Drop")}
                   </button>
                 )}
                 {p.room?.erasures?.some((x) => x.item === item.id) && (
                   <button className="tool" onClick={() => adjustErasure(item.id)}>
                     <Scan size={15} />
-                    调整擦除范围
+                    {t("调整擦除范围", "Erase box")}
                   </button>
                 )}
                 <button
@@ -1806,11 +1960,11 @@ export default function Workbench() {
                   }}
                 >
                   <ArrowUpFromLine size={15} />
-                  收回
+                  {t("收回", "Put away")}
                 </button>
                 <button
                   className="icon danger"
-                  aria-label="移除选中家具"
+                  aria-label={t("移除选中家具", "Remove this piece")}
                   onClick={() => {
                     changeItems(settleOff(p.items, item.id).filter((i) => i.id !== item.id));
                     setSelected(null);
@@ -1826,34 +1980,34 @@ export default function Workbench() {
         {floorOpen && p && (
           <div className="floor-panel">
             <div className="inspector-title">
-              <strong>地面位置</strong>
-              <button className="icon" onClick={() => setFloorOpen(false)} aria-label="关闭地面校准">
+              <strong>{t("地面位置", "Floor")}</strong>
+              <button className="icon" onClick={() => setFloorOpen(false)} aria-label={t("关闭地面校准", "Close floor settings")}>
                 <X />
               </button>
             </div>
             <p>
               {floorNote ||
-                "让网格刚好贴在地板上：网格浮在地板上方就往左拖，网格看不见了就往右一点。"}
+                t("让网格刚好贴在地板上：网格浮在地板上方就往左拖，网格看不见了就往右一点。", "Make the grid sit right on the floor: if it floats above, drag left; if it disappears, nudge right.")}
             </p>
             <div className="floor-field">
-              <span>地面高度</span>
+              <span>{t("地面高度", "Floor height")}</span>
               <input
                 type="range"
                 min={-3}
                 max={1}
                 step={0.01}
                 value={p.floor.height}
-                aria-label="地面高度"
+                aria-label={t("地面高度", "Floor height")}
                 onChange={(e) => setFloor({ height: Number(e.target.value) })}
               />
               <div className="floor-step">
-                <button className="icon" aria-label="地面下移 1 厘米" onClick={() => setFloor({ height: p.floor.height - 0.01 })}>
+                <button className="icon" aria-label={t("地面下移 1 厘米", "Floor 1 cm down")} onClick={() => setFloor({ height: p.floor.height - 0.01 })}>
                   <Minus />
                 </button>
                 <input
                   type="text"
                   inputMode="decimal"
-                  aria-label="地面高度（米）"
+                  aria-label={t("地面高度（米）", "Floor height (m)")}
                   value={floorDraft}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setFloorDraft(e.target.value)}
@@ -1861,14 +2015,14 @@ export default function Workbench() {
                   onKeyDown={(e) => e.key === "Enter" && commitFloorDraft()}
                 />
                 <span>m</span>
-                <button className="icon" aria-label="地面上移 1 厘米" onClick={() => setFloor({ height: p.floor.height + 0.01 })}>
+                <button className="icon" aria-label={t("地面上移 1 厘米", "Floor 1 cm up")} onClick={() => setFloor({ height: p.floor.height + 0.01 })}>
                   <Plus />
                 </button>
               </div>
             </div>
             <div className="floor-field">
               <span>
-                可摆放范围 <b>{p.floor.size} × {p.floor.size} m</b>
+                {t("可摆放范围 ", "Placement area ")}<b>{p.floor.size} × {p.floor.size} m</b>
               </span>
               <input
                 type="range"
@@ -1876,7 +2030,7 @@ export default function Workbench() {
                 max={20}
                 step={0.5}
                 value={p.floor.size}
-                aria-label="可摆放范围"
+                aria-label={t("可摆放范围", "Placement area")}
                 onChange={(e) => setFloor({ size: Number(e.target.value) })}
               />
             </div>
@@ -1885,25 +2039,21 @@ export default function Workbench() {
               disabled={busy}
               onClick={() => {
                 commitFloorDraft();
-                void persistFloor({ ...p.floor, confirmed: true }, "地面位置已保存。");
+                void persistFloor({ ...p.floor, confirmed: true }, t("地面位置已保存。", "Floor saved."));
                 setFloorNote("");
                 setFloorOpen(false);
               }}
             >
-              确认并保存
+              {t("确认并保存", "Confirm and save")}
             </button>
           </div>
         )}
         <footer className="workspace-footer">
           <div>
             <span className="tiny-dot" />
-            {p?.mode === "demo"
-              ? "示例模式"
-              : p?.room
-                ? "3D 空间"
-                : "照片 → 空间"}
+            {p?.mode === "demo" ? t("示例模式", "Sample") : p?.room ? t("3D 空间", "3D room") : t("照片 → 空间", "Photo → room")}
           </div>
-          <span>拖动空白旋转 · 右键平移 · 滚轮缩放视角</span>
+          <span>{t("拖动空白旋转 · 右键平移 · 滚轮缩放视角", "Drag to orbit · right-drag to pan · scroll to zoom")}</span>
           <button
             className="text-button"
             onClick={() => {
@@ -1911,10 +2061,10 @@ export default function Workbench() {
               fetch("/api/workbench?services=1")
                 .then((r) => r.json())
                 .then(setServices)
-                .catch(() => setServices({ error: "服务状态暂时不可用" }));
+                .catch(() => setServices({ error: t("服务状态暂时不可用", "Service status is unavailable for a moment") }));
             }}
           >
-            服务状态
+            {t("服务状态", "Services")}
           </button>
         </footer>
       </section>
@@ -1924,7 +2074,7 @@ export default function Workbench() {
           <span>{error}</span>
           <button
             className="icon"
-            aria-label="关闭提示"
+            aria-label={t("关闭提示", "Dismiss")}
             onClick={() => setError("")}
           >
             <X size={16} />
@@ -1942,26 +2092,26 @@ export default function Workbench() {
           <DialogContent className="workflow" showCloseButton={false} aria-describedby={undefined}>
             <div className="workflow-top">
               <div>
-                <span className="eyebrow">{p.name} · 处理步骤</span>
+                <span className="eyebrow">{spaceName(p.name, lang)} · {t("处理步骤", "Steps")}</span>
                 <DialogTitle>
                   {p.mode === "demo"
-                    ? "示例房间"
+                    ? t("示例房间", "Sample room")
                     : p.stage === "branch" || p.stage === "upload"
-                      ? "先决定，如何处理家具"
+                      ? t("把照片变成 3D 房间", "Turn the photo into a 3D room")
                       : p.stage === "confirm" || p.stage === "detecting"
-                        ? "确认本次处理的家具"
+                        ? t("确认本次处理的家具", "Confirm the furniture to process")
                         : p.stage === "review"
-                          ? "看看处理后的房间"
+                          ? t("看看处理后的房间", "Look at the processed room")
                           : p.stage === "processing"
-                            ? "正在修复房间背景"
+                            ? t("正在修复房间背景", "Repairing the background")
                             : p.room
-                              ? "空间已就绪"
-                              : "正在生成空间"}
+                              ? t("空间已就绪", "The room is ready")
+                              : t("正在生成空间", "Generating the room")}
                 </DialogTitle>
               </div>
               <button
                 className="icon"
-                aria-label="关闭处理步骤"
+                aria-label={t("关闭处理步骤", "Close steps")}
                 onClick={() => setDrawer(false)}
               >
                 <X />
@@ -1970,23 +2120,23 @@ export default function Workbench() {
             {p.mode === "demo" ? (
               <div className="demo-explanation">
                 <Box size={40} />
-                <h3>从右侧挑一件家具，放进房间。</h3>
+                <h3>{t("从右侧挑一件家具，放进房间。", "Pick a piece on the right and place it in the room.")}</h3>
                 <p>
-                  这里的床、书桌和柜子是明确标注的示例几何模型，供验证交互。
+                  {t("这里的床、书桌和柜子是明确标注的示例几何模型，供验证交互。", "The bed, desk and cabinet here are simple sample shapes, for trying things out.")}
                   <br />
-                  上传自己的照片后，将进入真实识别与生成流程。
+                  {t("上传自己的照片后，将进入真实识别与生成流程。", "Upload your own photo to turn your real room into 3D.")}
                 </p>
                 <button
                   className="button primary"
                   onClick={() => setDrawer(false)}
                 >
-                  继续摆放
+                  {t("继续摆放", "Keep arranging")}
                 </button>
               </div>
             ) : (
               <>
                 <div className="steps">
-                  {["照片与选择", "确认家具", "预览与下载", "可选 3D"].map((s, i) => {
+                  {[t("照片与选择", "Photo"), t("确认家具", "Furniture"), t("预览与下载", "Preview"), t("可选 3D", "3D")].map((s, i) => {
                     const at = ["upload", "branch"].includes(p.stage)
                       ? 0
                       : ["confirm", "detecting"].includes(p.stage)
@@ -2038,18 +2188,14 @@ export default function Workbench() {
                               ? processedURL
                               : url(p.original)
                           }
-                          alt={
-                            p.stage === "review"
-                              ? "处理后的房间"
-                              : "原始房间照片"
-                          }
+                          alt={p.stage === "review" ? t("处理后的房间", "The processed room") : t("原始房间照片", "The original room photo")}
                         />
                       ) : (
                         <button
                           className="button"
                           onClick={() => fileRef.current?.click()}
                         >
-                          选择照片
+                          {t("选择照片", "Choose a photo")}
                         </button>
                       )}
                       {!manual &&
@@ -2057,7 +2203,7 @@ export default function Workbench() {
                         p.candidates.map((c) => (
                           <button
                             key={c.id}
-                            aria-label={"选择" + c.name}
+                            aria-label={t("选择" + c.name, "Choose " + pieceName(c.name, "en"))}
                             className={
                               "mask-overlay " +
                               (choices.includes(c.id) ? "checked" : "")
@@ -2079,9 +2225,9 @@ export default function Workbench() {
                         <button key={c.id} className={"object-pin "+(choices.includes(c.id)?"chosen":"")}
                           style={{left:`${Math.min(83,c.box[0]*100)}%`,top:`${Math.max(2,c.box[1]*100)}%`}}
                           onClick={e=>{e.stopPropagation();setChoices(v=>v.includes(c.id)?v.filter(id=>id!==c.id):[...v,c.id]);}}
-                          aria-pressed={choices.includes(c.id)} aria-label={"选择"+c.name}>{i+1} · {c.name}</button>
+                          aria-pressed={choices.includes(c.id)} aria-label={t("选择" + c.name, "Choose " + pieceName(c.name, "en"))}>{i+1} · {pieceName(c.name, lang)}</button>
                       ))}
-                      {recognizing && <div className="recognition-veil"><Scan size={25}/><span>正在识别家具</span></div>}
+                      {recognizing && <div className="recognition-veil"><Scan size={25}/><span>{t("正在识别家具", "Recognising furniture")}</span></div>}
                       {manual && (
                         <svg viewBox="0 0 100 100" preserveAspectRatio="none">
                           <polygon
@@ -2107,35 +2253,73 @@ export default function Workbench() {
                     <div className="photo-caption">
                       <ImageIcon size={14} />
                       {manual
-                        ? "依次点击家具轮廓，至少 3 个点；白色区域将成为像素掩膜。"
+                        ? t("依次点击家具轮廓，至少 3 个点；白色区域将成为像素掩膜。", "Click around the piece, at least 3 points; the white area becomes the mask.")
                         : p.stage === "review"
-                          ? "已将掩膜外区域恢复为原图像素"
-                          : "原始照片 · 保持家具本来的样子"}
+                          ? t("已将掩膜外区域恢复为原图像素", "Everything outside the mask is the original photo")
+                          : t("原始照片 · 保持家具本来的样子", "Original photo · furniture as it is")}
                     </div>
                     {p.stage === "review" && (
                       <details>
-                        <summary>对照原图</summary>
+                        <summary>{t("对照原图", "Compare with the original")}</summary>
                         <img
                           className="compare-original"
                           src={url(p.original)}
-                          alt="处理前原图"
+                          alt={t("处理前原图", "Before processing")}
                         />
                       </details>
                     )}
                   </div>
                   <div className="flow-controls">
-                    {["branch","confirm","detecting"].includes(p.stage) && <div className="recognition-status" role="status" aria-live="polite">
-                      <div className="recognition-heading">{recognizing ? <Loader2 className="spin" size={18}/> : recognitionError ? <AlertCircle size={18}/> : <Scan size={18}/>}
-                        <strong>{recognizing ? recognitionMessage : recognitionError ? "识别暂未完成" : p.recognitionComplete ? `已找到 ${p.candidates.length} 件候选家具` : "自动识别家具"}</strong>
-                      </div>
-                      {recognizing && recognitionPercent!==undefined && <progress max={100} value={recognitionPercent} aria-label="模型下载进度"/>}
-                      <p>{recognitionError || (recognizing ? "照片在你的设备上识别，请稍候。" : "点击照片标记或下方名称选择。请检查轮廓；柜子还需确认是否为嵌入式。")}</p>
-                      {recognizing ? <button className="text-button" onClick={()=>{recognitionAbort.current?.abort();setRecognitionError("识别已取消，可以重试或手动圈选。");}}>取消识别</button> : <button className="text-button" disabled={busy||running} onClick={()=>void autoRecognize(p)}>重新自动识别</button>}
-                    </div>}
-
+                    {["detecting", "confirm"].includes(p.stage) && recognitionStatus}
                     {["branch", "upload"].includes(p.stage) && (
                       <>
-                        <h3>是否要移除屋内家具？</h3>
+                        <div className="draft-first">
+                          <h3>{t("生成这间房的 3D 空间", "Turn this room into 3D")}</h3>
+                          <p className="muted small">
+                            {t(
+                              "World Labs 用这张照片生成可以走进去的 3D 房间（草稿模型，约 5 分钟）。照片里的家具会留在房间里，之后可以点它们，换成能移动的模型。",
+                              "World Labs turns the photo into a 3D room you can step into (draft model, about 5 minutes). The furniture stays in the room; later you can click a piece to swap it for a movable model.",
+                            )}
+                          </p>
+                          <button
+                            className="button primary full"
+                            disabled={busy || recognizing || !generationReady.world}
+                            onClick={() => {
+                              if (window.confirm(t("用 World Labs 草稿模型生成 3D 房间，预计消耗约 230 积分。现在生成？", "Generate the 3D room with the World Labs draft model, about 230 credits. Generate now?")))
+                                void run(() => generate(true));
+                            }}
+                          >
+                            {busy ? <Loader2 className="spin" size={16} /> : <Box size={16} />}
+                            {t("直接生成 3D 房间（草稿 · 约 230 积分）", "Generate the 3D room (draft · about 230 credits)")}
+                          </button>
+                          {!generationReady.world && (
+                            <p className="small muted">{t("尚未配置 World Labs 密钥，暂时不能生成；可以导入在 Marble 官网生成的房间。", "No World Labs key is set up, so generation is off; you can import a room made on the Marble website.")}</p>
+                          )}
+                          <div className="marble-hint">
+                            <p>
+                              {t(
+                                "草稿生成快，但画面偏糊。想要更清晰逼真的房间，可以去 Marble 官网用 Marble 1.1 模型生成同一张照片，再把链接粘贴进来导入（不消耗本工作台积分）。",
+                                "Draft rooms are quick but soft. For a sharper, more lifelike room, generate the same photo with Marble 1.1 on the Marble website, then paste its link here to import it (no credits from this app).",
+                              )}
+                            </p>
+                            <div>
+                              <a className="text-button" href={MARBLE} target="_blank" rel="noopener noreferrer">
+                                {t("去 Marble 官网", "Open Marble")} <ArrowUpRight size={13} />
+                              </a>
+                              <button className="text-button" disabled={busy || recognizing} onClick={() => setImportOpen((v) => !v)}>
+                                {t("导入 Marble 房间", "Import a Marble room")}
+                              </button>
+                            </div>
+                          </div>
+                          {importOpen && importBlock}
+                        </div>
+                        <details className="optional-flow" open={p.candidates.length > 0 || recognizing || undefined}>
+                          <summary>
+                            {t("先处理家具（可选）", "Handle the furniture first (optional)")}
+                            <span>{t("移走家具、补全背景，或单独生成家具模型", "Remove pieces and fill the background, or model pieces separately")}</span>
+                          </summary>
+                          {recognitionStatus}
+                        <h3>{t("是否要移除屋内家具？", "Remove furniture from the room?")}</h3>
                         <button
                           className={
                             "branch-option " +
@@ -2145,8 +2329,8 @@ export default function Workbench() {
                         >
                           <span className="radio" />
                           <div>
-                            <strong>是，移除指定家具</strong>
-                            <p>这些家具不要了，只修复背景，不生成模型。</p>
+                            <strong>{t("是，移除指定家具", "Yes, remove chosen pieces")}</strong>
+                            <p>{t("这些家具不要了，只修复背景，不生成模型。", "They go; only the background is repaired, no models are made.")}</p>
                           </div>
                         </button>
                         <button
@@ -2158,19 +2342,19 @@ export default function Workbench() {
                         >
                           <span className="radio" />
                           <div>
-                            <strong>否，保留并让它们可编辑</strong>
-                            <p>免费提取透明家具图、补全背景；之后可选生成 3D。</p>
+                            <strong>{t("否，保留并让它们可编辑", "No, keep them and make them movable")}</strong>
+                            <p>{t("免费提取透明家具图、补全背景；之后可选生成 3D。", "Free cut-outs and background repair; 3D models are optional later.")}</p>
                           </div>
                         </button>
-                        {!!p.candidates.length && <div className="detected-chips" aria-label="识别出的家具">{p.candidates.map(c=>(
+                        {!!p.candidates.length && <div className="detected-chips" aria-label={t("识别出的家具", "Recognised furniture")}>{p.candidates.map(c=>(
                           <button key={c.id} className={choices.includes(c.id)?"chosen":""} aria-pressed={choices.includes(c.id)} onClick={()=>setChoices(v=>v.includes(c.id)?v.filter(id=>id!==c.id):[...v,c.id])}>
-                            {choices.includes(c.id)?<Check size={14}/>:<Plus size={14}/>} {c.name}
+                            {choices.includes(c.id)?<Check size={14}/>:<Plus size={14}/>} {pieceName(c.name, lang)}
                           </button>
                         ))}</div>}
                         <label className="field-label" htmlFor="intent">
                           {branch === "remove"
-                            ? "你想移除哪些家具？"
-                            : "你想让哪些家具变得可编辑？"}
+                            ? t("你想移除哪些家具？", "Which pieces should go?")
+                            : t("你想让哪些家具变得可编辑？", "Which pieces should become movable?")}
                         </label>
                         <textarea
                           id="intent"
@@ -2178,16 +2362,16 @@ export default function Workbench() {
                           onChange={(e) => setIntent(e.target.value)}
                           placeholder={
                             branch === "remove"
-                              ? "例如：删除书桌"
-                              : "例如：床和书桌，或窗边的柜子"
+                              ? t("例如：删除书桌", "For example: the desk")
+                              : t("例如：床和书桌，或窗边的柜子", "For example: the bed and the desk, or the cabinet by the window")
                           }
                           maxLength={500}
                         />
                         <p className="muted small">
-                          未选中的家具保留在背景中，不能单独移动。
+                          {t("未选中的家具保留在背景中，不能单独移动。", "Pieces not chosen stay in the background and can't be moved on their own.")}
                         </p>
                         <button
-                          className="button primary full"
+                          className="button full"
                           disabled={busy || recognizing || (!intent.trim() && !choices.length)}
                           onClick={() => run(detect)}
                         >
@@ -2196,7 +2380,7 @@ export default function Workbench() {
                           ) : (
                             <Scan size={16} />
                           )}
-                          查看并确认选择
+                          {t("查看并确认选择", "Review the selection")}
                         </button>
                         <button
                           className="text-button full"
@@ -2205,84 +2389,34 @@ export default function Workbench() {
                             setPoints([]);
                           }}
                         >
-                          手动圈选家具
+                          {t("手动圈选家具", "Outline a piece by hand")}
                         </button>
-                        {manual && (
-                          <div className="manual-controls">
-                            <select
-                              value={manualName}
-                              onChange={(e) => setManualName(e.target.value)}
-                            >
-                              <option>书桌</option>
-                              <option>床</option>
-                              <option>柜子</option>
-                              <option>椅子</option>
-                              <option>沙发</option>
-                            </select>
-                            <button
-                              className="button"
-                              onClick={() => setPoints((v) => v.slice(0, -1))}
-                            >
-                              撤回点
-                            </button>
-                            <button
-                              className="button primary"
-                              disabled={points.length < 3 || busy}
-                              onClick={() => run(addManual)}
-                            >
-                              完成圈选
-                            </button>
-                          </div>
-                        )}
-                        <div className="skip-actions">
-                          <button
-                            className="text-button"
-                            disabled={busy || recognizing || !generationReady.world}
-                            onClick={() => run(() => generate(true))}
-                          >
-                            这是空房／没有需要处理的家具
-                          </button>
-                          {branch === "edit" && (
-                            <button
-                              className="text-button"
-                              disabled={busy || recognizing || !generationReady.world}
-                              onClick={() => run(() => generate(true))}
-                            >
-                              暂不编辑家具，仅生成空间
-                            </button>
-                          )}
-                          <span>
-                            {generationReady.world ? "直接生成 3D 会使用 World Labs 积分（草稿约 230）。" : "图片识别、抠图与修复免费；3D 空间生成需另行配置 World Labs。"}
-                          </span>
-                          <button className="text-button" disabled={busy || recognizing} onClick={() => setImportOpen((v) => !v)}>
-                            已经在 Marble 官网生成过房间？导入它
-                          </button>
-                        </div>
-                        {importOpen && importBlock}
+                        {manual && manualControls(t("完成圈选", "Done"))}
+                        </details>
                       </>
                     )}
                     {["detecting", "confirm"].includes(p.stage) && (
                       <>
-                        <button className="text-button" disabled={busy||running||recognizing} onClick={()=>setP({...p,stage:"branch"})}><ChevronLeft size={15}/> 调整处理方式</button>
-                        <h3>{running ? "正在查找家具" : "请确认具体对象"}</h3>
+                        <button className="text-button" disabled={busy||running||recognizing} onClick={()=>setP({...p,stage:"branch"})}><ChevronLeft size={15}/> {t("调整处理方式", "Change the approach")}</button>
+                        <h3>{running ? t("正在查找家具", "Finding the furniture") : t("请确认具体对象", "Confirm the pieces")}</h3>
                         <p className="muted">
                           {p.branch === "remove"
-                            ? "仅移除你勾选的家具，不生成独立模型。"
-                            : "先提取选中家具的透明图片，并补全它们背后的房间。预览满意后可以下载，也可以继续生成 3D。"}
+                            ? t("仅移除你勾选的家具，不生成独立模型。", "Only the ticked pieces are removed; no models are made.")
+                            : t("先提取选中家具的透明图片，并补全它们背后的房间。预览满意后可以下载，也可以继续生成 3D。", "First the chosen pieces are cut out and the room behind them is filled in. Then download it, or go on to 3D.")}
                         </p>
                         {p.intent && (
                           <div className="intent-quote">“{p.intent}”</div>
                         )}
                         {p.candidates.length === 0 && !running && (
                           <div className="notice">
-                            没有找到匹配对象。可以修改描述重新检测，或手动圈选。
+                            {t("没有找到匹配对象。可以修改描述重新检测，或手动圈选。", "Nothing matched. Change the description, or outline by hand.")}
                           </div>
                         )}
                         {p.candidates.map((c) => (
                           <div className="candidate" key={c.id}>
                             <input
                               type="checkbox"
-                              aria-label={"本次处理"+c.name}
+                              aria-label={t("本次处理" + c.name, "Process " + pieceName(c.name, "en"))}
                               disabled={busy || recognizing || running}
                               checked={choices.includes(c.id)}
                               onChange={() =>
@@ -2302,32 +2436,35 @@ export default function Workbench() {
                               }}
                             />
                             <div>
-                              <strong>{c.name}</strong>
+                              <strong>{pieceName(c.name, lang)}</strong>
                               <span>
                                 {c.source === "manual"
-                                  ? "手动轮廓 · 请检查完整性"
+                                  ? t("手动轮廓 · 请检查完整性", "Hand outline · check it's complete")
                                   : c.score < 0.7
-                                    ? "识别不确定 · 请仔细确认"
+                                    ? t("识别不确定 · 请仔细确认", "Unsure · check carefully")
                                     : c.source === "local-detr"
-                                      ? `自动识别 · ${Math.round(c.score*100)}%${c.needsReview ? (c.kind === "cabinet" ? " · 请确认可移动" : " · 轮廓需检查") : " · 请核对轮廓"}`
-                                      : "候选实例 · 请核对照片"}
+                                      ? t(
+                                          `自动识别 · ${Math.round(c.score*100)}%${c.needsReview ? (c.kind === "cabinet" ? " · 请确认可移动" : " · 轮廓需检查") : " · 请核对轮廓"}`,
+                                          `Recognised · ${Math.round(c.score*100)}%${c.needsReview ? (c.kind === "cabinet" ? " · check it can be moved" : " · check the outline") : " · check the outline"}`,
+                                        )
+                                      : t("候选实例 · 请核对照片", "Candidate · check the photo")}
                               </span>
                             </div>
-                            <select className="candidate-kind" aria-label={"修正"+c.name+"类别"} value={c.kind} disabled={busy||recognizing||running} onChange={e=>{
+                            <select className="candidate-kind" aria-label={t("修正" + c.name + "类别", "Kind of " + pieceName(c.name, "en"))} value={c.kind} disabled={busy||recognizing||running} onChange={e=>{
                               const kind=e.target.value;
                               void run(async()=>setP(await api({action:"correct-candidate",id:p.id,candidate:c.id,kind})));
                             }}>
-                              <option value="bed">床</option><option value="desk">桌子</option><option value="cabinet">柜子</option><option value="chair">椅子／凳</option><option value="sofa">沙发</option>
+                              <option value="bed">{t("床", "Bed")}</option><option value="desk">{t("桌子", "Table")}</option><option value="cabinet">{t("柜子", "Cabinet")}</option><option value="chair">{t("椅子／凳", "Chair / stool")}</option><option value="sofa">{t("沙发", "Sofa")}</option>
                             </select>
                           </div>
                         ))}
                         {p.candidates.length > 1 && (
                           <p className="small muted">
-                            名称相同也可能是不同实例；“窗边”等方位需在图中核对。
+                            {t("名称相同也可能是不同实例；“窗边”等方位需在图中核对。", "Same names can be different pieces; check places like “by the window” on the photo.")}
                           </p>
                         )}
-                        {imageRepair===false && <div className="notice">本地修复模型未就绪，请重新启动工作台完成模型检查。已圈选的家具会保留。</div>}
-                        {imageRepair && <p className="small muted">本地 LaMa 修复 · 无需密钥 · 不消耗积分 · 照片留在本机</p>}
+                        {imageRepair===false && <div className="notice">{t("本地修复模型未就绪，请重新启动工作台完成模型检查。已圈选的家具会保留。", "The local repair model isn't ready. Restart the app to finish the model check; your selection is kept.")}</div>}
+                        {imageRepair && <p className="small muted">{t("本地 LaMa 修复 · 无需密钥 · 不消耗积分 · 照片留在本机", "Local LaMa repair · no key · no credits · the photo stays on this Mac")}</p>}
                         <button
                           className="button primary full"
                           disabled={busy || recognizing || running || !choices.length || imageRepair===false}
@@ -2338,9 +2475,9 @@ export default function Workbench() {
                           ) : (
                             <Check size={16} />
                           )}
-                          {busy ? (repairMessage || "正在准备图片…") : `免费处理 ${choices.length} 件家具`}
+                          {busy ? (repairMessage || t("正在准备图片…", "Preparing the image…")) : t(`免费处理 ${choices.length} 件家具`, `Process ${choices.length} ${choices.length === 1 ? "piece" : "pieces"} (free)`)}
                         </button>
-                        {busy && repairMessage && <button className="text-button" onClick={()=>repairAbort.current?.abort()}>取消处理，保留选择</button>}
+                        {busy && repairMessage && <button className="text-button" onClick={()=>repairAbort.current?.abort()}>{t("取消处理，保留选择", "Cancel, keep the selection")}</button>}
                         <button
                           className="text-button full"
                           disabled={running}
@@ -2349,61 +2486,35 @@ export default function Workbench() {
                             setPoints([]);
                           }}
                         >
-                          补充手动圈选
+                          {t("补充手动圈选", "Add a hand outline")}
                         </button>
-                        {manual && (
-                          <div className="manual-controls">
-                            <select
-                              value={manualName}
-                              onChange={(e) => setManualName(e.target.value)}
-                            >
-                              <option>书桌</option>
-                              <option>床</option>
-                              <option>柜子</option>
-                              <option>椅子</option>
-                              <option>沙发</option>
-                            </select>
-                            <button
-                              className="button"
-                              onClick={() => setPoints((v) => v.slice(0, -1))}
-                            >
-                              撤回点
-                            </button>
-                            <button
-                              className="button primary"
-                              disabled={points.length < 3 || busy}
-                              onClick={() => run(addManual)}
-                            >
-                              完成
-                            </button>
-                          </div>
-                        )}
+                        {manual && manualControls(t("完成", "Done"))}
                         <textarea
-                          aria-label="修改家具描述"
+                          aria-label={t("修改家具描述", "Change the description")}
                           value={intent}
                           onChange={(e) => setIntent(e.target.value)}
-                          placeholder="修改描述，例如左侧的书桌"
+                          placeholder={t("修改描述，例如左侧的书桌", "Change the description, e.g. the desk on the left")}
                         />
                         <button
                           className="text-button full"
                           disabled={busy || recognizing || running || !intent.trim()}
                           onClick={() => run(detect)}
                         >
-                          按描述更新选择
+                          {t("按描述更新选择", "Update the selection")}
                         </button>
                       </>
                     )}
                     {p.stage === "review" && (
                       <>
-                        <h3>修复完成，看看新的空间</h3>
+                        <h3>{t("修复完成，看看新的空间", "Repaired. Have a look")}</h3>
                         <p className="muted">
-                          目标家具应完整消失，未选家具、墙面与地板应保持原样。
+                          {t("目标家具应完整消失，未选家具、墙面与地板应保持原样。", "The chosen pieces should be gone entirely; everything else should look as before.")}
                         </p>
                         <div className="notice">
-                          掩膜外像素已严格保留。边缘残影、遮挡区域和大面积修复仍需人工检查。
+                          {t("掩膜外像素已严格保留。边缘残影、遮挡区域和大面积修复仍需人工检查。", "Pixels outside the mask are untouched. Check edges, hidden areas and large repairs by eye.")}
                           {quality !== null &&
                             quality > 3 &&
-                            " 修复服务改动过未选区域，现已恢复。"}
+                            t(" 修复服务改动过未选区域，现已恢复。", " The repair changed areas outside the mask; they have been restored.")}
                         </div>
                         {p.branch === "edit" && p.cutouts && (
                           <FurnitureInputs
@@ -2414,36 +2525,46 @@ export default function Workbench() {
                             onDims={setPieceDims}
                           />
                         )}
-                        <a className="button primary full" href={p.rawBackground ? url(p.rawBackground)+'&download='+encodeURIComponent('房间-修复背景.png') : undefined} download="房间-修复背景.png" aria-disabled={!processed}>下载修复后的房间</a>
-                        <p className="small muted">免费处理已完成，结果已保存在本机。大面积遮挡和家具背后的区域是推测补全，可返回重新圈选。</p>
-                        <h3>需要三维空间？</h3>
-                        <p className="small muted">这是独立的可选步骤。World Labs 生成空间，Tripo 生成家具模型；两者可能消耗服务商积分。</p>
+                        <a className="button primary full" href={p.rawBackground ? url(p.rawBackground)+'&download='+encodeURIComponent(t('房间-修复背景.png', 'room-repaired.png')) : undefined} download={t("房间-修复背景.png", "room-repaired.png")} aria-disabled={!processed}>{t("下载修复后的房间", "Download the repaired room")}</a>
+                        <p className="small muted">{t("免费处理已完成，结果已保存在本机。大面积遮挡和家具背后的区域是推测补全，可返回重新圈选。", "Done for free and saved on this Mac. Large hidden areas are inferred; you can go back and outline again.")}</p>
+                        <h3>{t("需要三维空间？", "Want it in 3D?")}</h3>
+                        <p className="small muted">{t("这是独立的可选步骤。World Labs 生成空间，Tripo 生成家具模型；两者可能消耗服务商积分。", "An optional step: World Labs makes the room, Tripo the furniture models. Both may use provider credits.")}</p>
                         <label className="approve">
                           <input
                             type="checkbox"
                             checked={approved}
                             onChange={(e) => setApproved(e.target.checked)}
                           />
-                          已检查：没有明显残留或误删，单件家具可用于建模
+                          {t("已检查：没有明显残留或误删，单件家具可用于建模", "Checked: no visible leftovers or missing parts; the cut-outs are fine for modelling")}
                         </label>
                         <button
                           className="button primary full"
                           disabled={busy || !approved || !processed || !generationReady.world || (p.branch==='edit' && !generationReady.furniture)}
                           onClick={() => run(() => generate())}
                         >
-                          继续生成 3D 空间{p.branch === "edit" ? "与家具" : ""}
+                          {p.branch === "edit" ? t("继续生成 3D 空间与家具", "Generate the 3D room and furniture") : t("继续生成 3D 空间", "Generate the 3D room")}
                         </button>
                         <p className="small muted">
                           {!generationReady.world || (p.branch==='edit'&&!generationReady.furniture)
-                            ? "尚未配置 3D 服务，不影响上面的免费修复和下载。"
-                            : `预计消耗 World Labs 约 230 积分${p.branch === "edit" && p.cutouts ? `，Tripo 30 × ${Object.keys(p.cutouts).length} = ${30 * Object.keys(p.cutouts).length} 积分` : ""}。空间使用草稿模式，家具分别生成${Object.keys(p.productPhotos ?? {}).some((id) => p.cutouts?.[id]) ? "（换了白底照片的用照片生成）" : ""}；未拍到的部分属于推测补全。`}
+                            ? t("尚未配置 3D 服务，不影响上面的免费修复和下载。", "3D services aren't set up; the free repair and download above still work.")
+                            : t(
+                                `预计消耗 World Labs 约 230 积分${p.branch === "edit" && p.cutouts ? `，Tripo 30 × ${Object.keys(p.cutouts).length} = ${30 * Object.keys(p.cutouts).length} 积分` : ""}。空间使用草稿模式，家具分别生成${Object.keys(p.productPhotos ?? {}).some((id) => p.cutouts?.[id]) ? "（换了白底照片的用照片生成）" : ""}；未拍到的部分属于推测补全。`,
+                                `About 230 World Labs credits${p.branch === "edit" && p.cutouts ? `, plus Tripo 30 × ${Object.keys(p.cutouts).length} = ${30 * Object.keys(p.cutouts).length}` : ""}. The room uses the draft model and each piece is generated separately${Object.keys(p.productPhotos ?? {}).some((id) => p.cutouts?.[id]) ? " (from the product photo where you gave one)" : ""}; what the photo didn't show is inferred.`,
+                              )}
+                        </p>
+                        <p className="small muted marble-line">
+                          {t("想要更清晰的房间？可以去 ", "Want a sharper room? Generate it with Marble 1.1 on ")}
+                          <a href={MARBLE} target="_blank" rel="noopener noreferrer">
+                            {t("Marble 官网", "the Marble website")}
+                          </a>
+                          {t("用 Marble 1.1 生成，再导入。", ", then import it.")}
                         </p>
                         <button
                           className="text-button"
                           disabled={busy}
                           onClick={() => run(async()=>{setP(await api({action:'revise',id:p.id}));setApproved(false);})}
                         >
-                          返回调整选择／重新修复
+                          {t("返回调整选择／重新修复", "Back: change the selection or repair again")}
                         </button>
                       </>
                     )}
@@ -2453,22 +2574,24 @@ export default function Workbench() {
                       <>
                         <h3>
                           {p.stage === "processing"
-                            ? "正在修复房间背景"
+                            ? t("正在修复房间背景", "Repairing the background")
                             : p.room
-                              ? "空间已就绪"
-                              : "正在生成空间"}
+                              ? t("空间已就绪", "The room is ready")
+                              : t("正在生成空间", "Generating the room")}
                         </h3>
                         <p className="muted">
-                          可以收起面板。服务商任务已保存，刷新后继续查询，不会重新提交。
+                          {p.room?.preset
+                            ? t("这张照片的 Marble 1.1 房间已经准备好，地面也已对齐。", "This photo's Marble 1.1 room is ready, with the floor already set.")
+                            : t("可以收起面板。服务商任务已保存，刷新后继续查询，不会重新提交。", "You can close this. Provider jobs are saved; after a refresh they are checked again, never resubmitted.")}
                         </p>
                         <div className="task-list">
                           {p.tasks
-                            .map((t) => (
-                              <div className={"task " + (t.status === "done" ? "done" : ["failed", "uncertain", "paused"].includes(t.status) ? "failed" : "")} key={t.id}>
-                                {t.status === "done" ? (
+                            .map((task) => (
+                              <div className={"task " + (task.status === "done" ? "done" : ["failed", "uncertain", "paused"].includes(task.status) ? "failed" : "")} key={task.id}>
+                                {task.status === "done" ? (
                                   <CheckCircle2 size={18} />
                                 ) : ["failed", "uncertain", "paused"].includes(
-                                    t.status,
+                                    task.status,
                                   ) ? (
                                   <AlertCircle size={18} />
                                 ) : (
@@ -2476,39 +2599,44 @@ export default function Workbench() {
                                 )}
                                 <div>
                                   <strong>
-                                    {t.kind === "world"
-                                      ? "房间空间"
-                                      : p.items.find((i) => i.id === t.target)
-                                          ?.name || "独立家具"}
+                                    {task.kind === "world"
+                                      ? t("房间空间", "Room")
+                                      : (() => {
+                                          const it = p.items.find((i) => i.id === task.target);
+                                          return it ? displayName(it) : t("独立家具", "Furniture");
+                                        })()}
                                   </strong>
                                   <span>
-                                    {t.status === "done"
-                                      ? "已完成"
-                                      : t.status === "queued"
-                                        ? "等待处理"
-                                        : t.status === "running"
-                                          ? "服务商正在处理"
-                                          : t.status === "submitting"
-                                            ? "正在提交任务"
-                                            : t.error || "失败"}
+                                    {task.status === "done"
+                                      ? t("已完成", "Done")
+                                      : task.status === "queued"
+                                        ? t("等待处理", "Waiting")
+                                        : task.status === "running"
+                                          ? t("服务商正在处理", "The provider is working on it")
+                                          : task.status === "submitting"
+                                            ? t("正在提交任务", "Submitting")
+                                            : taskError(task) || t("失败", "Failed")}
                                   </span>
-                                  {t.providerId && <small>任务编号：{t.providerId}</small>}
-                                  {["world", "furniture"].includes(t.kind) && <small>
-                                    预计 {t.estimatedCredits ?? "待确认"} · 预留 {t.reservedCredits ?? 0} · 实际扣费 {t.actualCredits ?? "待结算"} 积分
+                                  {task.providerId && <small>{t("任务编号：", "Job: ")}{task.providerId}</small>}
+                                  {["world", "furniture"].includes(task.kind) && <small>
+                                    {t(
+                                      `预计 ${task.estimatedCredits ?? "待确认"} · 预留 ${task.reservedCredits ?? 0} · 实际扣费 ${task.actualCredits ?? "待结算"} 积分`,
+                                      `Estimate ${task.estimatedCredits ?? "pending"} · reserved ${task.reservedCredits ?? 0} · charged ${task.actualCredits ?? "pending"} credits`,
+                                    )}
                                   </small>}
-                                  {canRetry(t) && (
+                                  {canRetry(task) && (
                                     <button
                                       className="text-button"
                                       disabled={busy}
                                       onClick={() =>
                                         run(async () =>
                                           setP(
-                                            await retryTask(t.id),
+                                            await retryTask(task.id),
                                           ),
                                         )
                                       }
                                     >
-                                      {retryLabel(t)}
+                                      {retryLabel(task, t)}
                                     </button>
                                   )}
                                 </div>
@@ -2519,57 +2647,57 @@ export default function Workbench() {
                           <>
                             <div className="notice">
                               {p.floor.confirmed
-                                ? "地面已对齐，可以直接摆放家具。照片里的其他家具属于背景，不能单独移动。"
-                                : "正在根据房间结构查找地面；找不到时会请你手动对齐。照片里的其他家具属于背景，不能单独移动。"}
+                                ? t("地面已对齐，可以直接摆放家具。照片里的其他家具属于背景，点一下可以把它变成能移动的模型。", "The floor is set: place furniture right away. Furniture in the photo is part of the room; click a piece to make it movable.")
+                                : t("正在根据房间结构查找地面；找不到时会请你手动对齐。照片里的其他家具属于背景，不能单独移动。", "Finding the floor from the room; if it can't, you'll be asked to set it. Furniture in the photo is part of the room and can't move on its own.")}
                             </div>
                             <button className="button primary full" onClick={() => setDrawer(false)}>
-                              进入空间
+                              {t("进入空间", "Enter the room")}
                             </button>
                           </>
                         )}
                         {p.stage === "ready" && p.room && (
                           <div className="clean-layer">
-                            <strong>空房间底图</strong>
+                            <strong>{t("空房间底图", "Empty-room layer")}</strong>
                             <p className="small muted">
                               {p.room.clean
-                                ? "已设置。擦除家具的地方会显示底图里干净的地板和墙面。"
-                                : "导入一个同一视角、没有家具的 Marble 房间。擦除家具的地方会用它补齐，不再露出痕迹。"}
+                                ? t("已设置。擦除家具的地方会显示底图里干净的地板和墙面。", "Set. Where furniture is erased, the clean floor and walls of this layer show.")
+                                : t("导入一个同一视角、没有家具的 Marble 房间。擦除家具的地方会用它补齐，不再露出痕迹。", "Import a Marble room of the same view without furniture. Erased areas are filled from it, without traces.")}
                             </p>
                             {p.room.clean && (
-                              <div className="clean-nudge" aria-label="底图对齐微调">
-                                <span>对齐微调 · 每次 2 cm</span>
+                              <div className="clean-nudge" aria-label={t("底图对齐微调", "Fine-tune the layer")}>
+                                <span>{t("对齐微调 · 每次 2 cm", "Fine-tune · 2 cm a step")}</span>
                                 {(
                                   [
-                                    ["左", 0, -0.02],
-                                    ["右", 0, 0.02],
-                                    ["前", 2, -0.02],
-                                    ["后", 2, 0.02],
-                                    ["上", 1, 0.02],
-                                    ["下", 1, -0.02],
-                                    ["左转", 3, 0.0087],
-                                    ["右转", 3, -0.0087],
+                                    [t("左", "Left"), 0, -0.02],
+                                    [t("右", "Right"), 0, 0.02],
+                                    [t("前", "Front"), 2, -0.02],
+                                    [t("后", "Back"), 2, 0.02],
+                                    [t("上", "Up"), 1, 0.02],
+                                    [t("下", "Down"), 1, -0.02],
+                                    [t("左转", "Turn left"), 3, 0.0087],
+                                    [t("右转", "Turn right"), 3, -0.0087],
                                   ] as const
                                 ).map(([label, axis, by]) => (
-                                  <button key={label} className="button" disabled={busy} onClick={() => nudgeClean(axis, by)}>
+                                  <button key={label} className="button" disabled={busy} onClick={() => nudgeClean(axis as 0 | 1 | 2 | 3, by)}>
                                     {label}
                                   </button>
                                 ))}
                               </div>
                             )}
                             <button className="text-button" disabled={busy} onClick={() => setCleanOpen((v) => !v)}>
-                              {p.room.clean ? "换一个空房间底图" : "导入空房间底图"}
+                              {p.room.clean ? t("换一个空房间底图", "Replace the empty-room layer") : t("导入空房间底图", "Import an empty-room layer")}
                             </button>
                             {cleanOpen && (
                               <div className="import-world">
                                 <textarea
-                                  aria-label="空房间底图的 Marble 嵌入代码"
+                                  aria-label={t("空房间底图的 Marble 嵌入代码", "Marble embed code of the empty room")}
                                   value={cleanText}
                                   onChange={(e) => setCleanText(e.target.value)}
-                                  placeholder="粘贴空房间的 Marble 嵌入代码或查看器链接"
+                                  placeholder={t("粘贴空房间的 Marble 嵌入代码或查看器链接", "Paste the empty room's Marble embed code or viewer link")}
                                 />
                                 <button className="button primary full" disabled={busy || !cleanText.trim()} onClick={() => run(importClean)}>
                                   {busy ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
-                                  {busy ? "正在下载底图…" : "导入底图（不消耗积分）"}
+                                  {busy ? t("正在下载底图…", "Downloading the layer…") : t("导入底图（不消耗积分）", "Import layer (no credits)")}
                                 </button>
                               </div>
                             )}
@@ -2578,7 +2706,7 @@ export default function Workbench() {
                         {p.stage === "ready" && (
                           <>
                             <button className="text-button" disabled={busy} onClick={() => setImportOpen((v) => !v)}>
-                              换成在 Marble 官网生成的房间
+                              {t("换成在 Marble 官网生成的房间", "Replace with a room made on the Marble website")}
                             </button>
                             {importOpen && importBlock}
                           </>
@@ -2598,47 +2726,49 @@ export default function Workbench() {
             className="service-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="服务状态"
+            aria-label={t("服务状态", "Services")}
           >
             <div className="inspector-title">
-              <h2>服务状态</h2>
+              <h2>{t("服务状态", "Services")}</h2>
               <button
                 className="icon"
-                aria-label="关闭服务状态"
+                aria-label={t("关闭服务状态", "Close services")}
                 onClick={() => setShowServices(false)}
               >
                 <X />
               </button>
             </div>
             {!services ? (
-              <p>正在读取实际余额…</p>
+              <p>{t("正在读取实际余额…", "Reading the balances…")}</p>
             ) : (
               <>
                 <div className="service-row">
                   <strong>World Labs</strong>
                   <span>
-                    {services.world?.error ||
-                      `${services.world?.remaining_credits ?? "—"} 积分`}
+                    {(lang === "en" ? services.world?.errorEn : undefined) ||
+                      services.world?.error ||
+                      t(`${services.world?.remaining_credits ?? "—"} 积分`, `${services.world?.remaining_credits ?? "—"} credits`)}
                   </span>
                 </div>
                 <div className="service-row">
                   <strong>Tripo</strong>
                   <span>
-                    {services.tripo?.error ||
-                      `${services.tripo?.data?.balance ?? "—"} 积分`}
+                    {(lang === "en" ? services.tripo?.errorEn : undefined) ||
+                      services.tripo?.error ||
+                      t(`${services.tripo?.data?.balance ?? "—"} 积分`, `${services.tripo?.data?.balance ?? "—"} credits`)}
                   </span>
                 </div>
                 <div className="service-row">
-                  <strong>背景修复</strong>
+                  <strong>{t("背景修复", "Background repair")}</strong>
                   <span>
-                    {imageRepair ? "本地 LaMa · 免费 · 已就绪" : "本地模型待安装"}
+                    {imageRepair ? t("本地 LaMa · 免费 · 已就绪", "Local LaMa · free · ready") : t("本地模型待安装", "Local model not installed")}
                   </span>
                 </div>
                 <p className="muted">
-                  识别、透明抠图、背景补全都在本机完成，不需要 API 密钥。World Labs 和 Tripo 仅用于可选的 3D 生成。
+                  {t("识别、透明抠图、背景补全都在本机完成，不需要 API 密钥。World Labs 和 Tripo 仅用于可选的 3D 生成。", "Recognition, cut-outs and background repair run on this Mac without API keys. World Labs and Tripo are only for optional 3D generation.")}
                 </p>
                 <p className="small muted">
-                  本轮 Tripo 上限 5,000 积分。示例房间不消耗生成积分。
+                  {t("本地预算上限见 .dev.vars。示例房间和演示卧室不消耗生成积分。", "Local budget limits are in .dev.vars. The sample room and the demo bedroom use no generation credits.")}
                 </p>
               </>
             )}

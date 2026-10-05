@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { ArrowRight, Check, Loader2, PencilLine, Trash2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useLang, type Lang, type T } from "@/lib/i18n";
+import { spaceName } from "@/lib/demo-room";
 
 /** One of the person's spaces as the home page lists it (GET /api/workbench?list=1). */
 export type SpaceSummary = {
@@ -16,26 +18,36 @@ export type SpaceSummary = {
 };
 
 const thumb = (key: string) => "/api/assets?key=" + encodeURIComponent(key);
-const when = (t: number) =>
-  new Date(t).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const when = (time: number, lang: Lang) =>
+  new Date(time).toLocaleString(lang === "en" ? "en-US" : "zh-CN", { month: lang === "en" ? "short" : "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 /** Where the space stands, in the words of its next step. */
-export function stageLabel(s: Pick<SpaceSummary, "stage" | "room" | "placed">) {
-  if (s.stage === "ready") return s.room ? (s.placed ? `已摆放 ${s.placed} 件` : "3D 空间已就绪") : "照片已处理";
-  return (
-    { upload: "等待上传照片", branch: "正在选家具", detecting: "正在识别家具", confirm: "正在选家具", processing: "正在处理照片", review: "检查处理结果", generating: "正在生成 3D" } as Record<string, string>
-  )[s.stage] ?? "进行中";
+export function stageLabel(s: Pick<SpaceSummary, "stage" | "room" | "placed">, t: T) {
+  if (s.stage === "ready")
+    return s.room ? (s.placed ? t(`已摆放 ${s.placed} 件`, `${s.placed} ${s.placed === 1 ? "piece" : "pieces"} placed`) : t("3D 空间已就绪", "3D room ready")) : t("照片已处理", "Photo processed");
+  const steps: Record<string, [string, string]> = {
+    upload: ["等待上传照片", "Waiting for a photo"],
+    branch: ["正在选家具", "Choosing furniture"],
+    detecting: ["正在识别家具", "Recognising furniture"],
+    confirm: ["正在选家具", "Choosing furniture"],
+    processing: ["正在处理照片", "Processing the photo"],
+    review: ["检查处理结果", "Checking the result"],
+    generating: ["正在生成 3D", "Generating 3D"],
+  };
+  const step = steps[s.stage];
+  return step ? t(step[0], step[1]) : t("进行中", "In progress");
 }
 
 /** The most recent space on the home page: one click back into it. */
 export function ContinueCard({ space, onOpen }: { space: SpaceSummary; onOpen: () => void }) {
+  const { lang, t } = useLang();
   return (
     <button className="continue-card" onClick={onOpen}>
       <span className="continue-thumb">{space.original ? <img src={thumb(space.original)} alt="" /> : null}</span>
       <span className="continue-text">
-        <span className="eyebrow">继续上次</span>
-        <strong>{space.name}</strong>
+        <span className="eyebrow">{t("继续上次", "Pick up where you left off")}</span>
+        <strong>{spaceName(space.name, lang)}</strong>
         <span>
-          {when(space.updated)} · {stageLabel(space)}
+          {when(space.updated, lang)} · {stageLabel(space, t)}
         </span>
       </span>
       <ArrowRight size={16} />
@@ -59,6 +71,7 @@ export default function SpacesDialog({
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const { lang, t } = useLang();
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -84,11 +97,16 @@ export default function SpacesDialog({
       <DialogContent className="spaces" showCloseButton={false}>
         <div className="add-top">
           <div>
-            <span className="eyebrow">我的空间 · {spaces.length} 个</span>
-            <DialogTitle>打开一个空间</DialogTitle>
-            <DialogDescription>每个空间是一张房间照片和它的 3D 房间、家具与摆法。删除只会去掉这个空间；别的空间还在用的房间文件会保留。</DialogDescription>
+            <span className="eyebrow">{t(`我的空间 · ${spaces.length} 个`, `My spaces · ${spaces.length}`)}</span>
+            <DialogTitle>{t("打开一个空间", "Open a space")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "每个空间是一张房间照片和它的 3D 房间、家具与摆法。删除只会去掉这个空间；别的空间还在用的房间文件会保留。",
+                "Each space is one room photo with its 3D room, furniture and layout. Deleting removes only that space; room files another space uses are kept.",
+              )}
+            </DialogDescription>
           </div>
-          <button className="icon" aria-label="关闭" onClick={() => onOpenChange(false)}>
+          <button className="icon" aria-label={t("关闭", "Close")} onClick={() => onOpenChange(false)}>
             <X size={16} />
           </button>
         </div>
@@ -98,10 +116,12 @@ export default function SpacesDialog({
           </p>
         )}
         <ul className="space-grid">
-          {spaces.map((s) => (
+          {spaces.map((s) => {
+            const name = spaceName(s.name, lang);
+            return (
             <li key={s.id} className="space-card">
-              <button className="space-open" disabled={!!busy} onClick={() => onOpen(s.id)} aria-label={`打开「${s.name}」`}>
-                <span className="space-thumb">{s.original ? <img src={thumb(s.original)} alt="" loading="lazy" /> : <span>还没有照片</span>}</span>
+              <button className="space-open" disabled={!!busy} onClick={() => onOpen(s.id)} aria-label={t(`打开「${name}」`, `Open “${name}”`)}>
+                <span className="space-thumb">{s.original ? <img src={thumb(s.original)} alt="" loading="lazy" /> : <span>{t("还没有照片", "No photo yet")}</span>}</span>
               </button>
               <div className="space-info">
                 {editing === s.id ? (
@@ -109,7 +129,7 @@ export default function SpacesDialog({
                     autoFocus
                     value={draft}
                     maxLength={40}
-                    aria-label="空间名称"
+                    aria-label={t("空间名称", "Space name")}
                     onChange={(e) => setDraft(e.target.value)}
                     onBlur={() => commit(s.id)}
                     onKeyDown={(e) => {
@@ -118,18 +138,18 @@ export default function SpacesDialog({
                     }}
                   />
                 ) : (
-                  <strong title={s.name}>{s.name}</strong>
+                  <strong title={name}>{name}</strong>
                 )}
                 <span>
-                  {when(s.updated)} · {stageLabel(s)}
+                  {when(s.updated, lang)} · {stageLabel(s, t)}
                 </span>
                 <div className="space-actions">
                   <button className="text-button" disabled={!!busy} onClick={() => onOpen(s.id)}>
-                    打开
+                    {t("打开", "Open")}
                   </button>
                   <button
                     className="icon"
-                    aria-label={`重命名「${s.name}」`}
+                    aria-label={t(`重命名「${name}」`, `Rename “${name}”`)}
                     disabled={!!busy}
                     onClick={() => {
                       setDraft(s.name);
@@ -140,10 +160,17 @@ export default function SpacesDialog({
                   </button>
                   <button
                     className="icon danger"
-                    aria-label={`删除「${s.name}」`}
+                    aria-label={t(`删除「${name}」`, `Delete “${name}”`)}
                     disabled={!!busy}
                     onClick={() => {
-                      if (window.confirm(`删除「${s.name}」（${when(s.updated)}）？\n照片、家具和摆法会一起删除，不能恢复；别的空间还在用的房间文件会保留。`))
+                      if (
+                        window.confirm(
+                          t(
+                            `删除「${name}」（${when(s.updated, lang)}）？\n照片、家具和摆法会一起删除，不能恢复；别的空间还在用的房间文件会保留。`,
+                            `Delete “${name}” (${when(s.updated, lang)})?\nIts photo, furniture and layout go with it and can't be restored; room files another space uses are kept.`,
+                          ),
+                        )
+                      )
                         void act(s.id, () => onDelete(s.id));
                     }}
                   >
@@ -152,7 +179,8 @@ export default function SpacesDialog({
                 </div>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       </DialogContent>
     </Dialog>

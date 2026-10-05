@@ -1,9 +1,10 @@
+import { currentLang, pick } from "./i18n";
 import type { Candidate } from "./types";
 export function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const i = new Image();
     i.onload = () => resolve(i);
-    i.onerror = () => reject(Error("图片加载失败，请重试。"));
+    i.onerror = () => reject(Error(pick(currentLang())("图片加载失败，请重试。", "The image failed to load. Please try again.")));
     i.src = src;
   });
 }
@@ -55,7 +56,7 @@ export async function prepareImages(original: string, selected: Candidate[]) {
       mask.data[i] = mask.data[i + 1] = mask.data[i + 2] = on ? 255 : 0;
       mask.data[i + 3] = 255;
     }
-    if (x1 <= x0 || y1 <= y0) throw Error(c.name + " 掩膜为空，请重新圈选。");
+    if (x1 <= x0 || y1 <= y0) throw Error(pick(currentLang())(c.name + " 掩膜为空，请重新圈选。", `The outline of ${c.name} is empty. Outline it again.`));
     source.getContext("2d")!.putImageData(pixels, 0, 0);
     mx.putImageData(mask, 0, 0);
     ctx.globalCompositeOperation = "lighten";

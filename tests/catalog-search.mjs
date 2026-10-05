@@ -32,8 +32,8 @@ assert.equal(Math.round(catalog.reduce((a,i)=>a+i.price,0)*100)/100,1350.08,'ref
 assert.equal(pricing.total,1350.08);
 console.log('PASS 20 pieces: official https links, USD prices match the ECB conversion, total $1,350.08');
 let n=0;
-function check(sentence,expect){
-  const raw=parse(sentence),a=JSON.parse(JSON.stringify(find(catalog,raw))),c=JSON.parse(JSON.stringify(raw)),ids=a.items.map(i=>i.id);
+function check(sentence,expect,lang='zh'){
+  const raw=parse(sentence),a=JSON.parse(JSON.stringify(find(catalog,raw,lang))),c=JSON.parse(JSON.stringify(raw)),ids=a.items.map(i=>i.id);
   try{
     if(expect.kinds)assert.deepEqual(c.kinds,expect.kinds);
     if(expect.sizes)assert.deepEqual(c.sizes,expect.sizes);
@@ -79,4 +79,23 @@ check('500元以内的沙发',{kinds:['sofa'],reply:/^家具库里暂时没有�
 check('随便看看',{reply:/共有 20 件/});
 check('助眠',{tags:['sleep'],ids:['aroma-diffuser']});
 check('宽至少80、不超过120厘米的桌子',{sizes:[{axis:'w',min:80,max:120}],ids:['lisabo-desk']});
+// English questions, answered in English.
+const en=(sentence,expect)=>check(sentence,expect,'en');
+en('a desk under 1 m wide',{kinds:['desk'],sizes:[{axis:'w',max:100}],ids:['lisabo-desk'],relaxed:['size'],reply:/^No exact match for desks up to 100 cm wide\. With the size relaxed, 1 fits: LISABO 118 cm wide\.$/});
+en('a lamp under $50',{kinds:['lamp'],price:{max:50},ids:['flowerpot-vp9'],relaxed:['price'],reply:/^No exact match for lamps under \$50\. With the price relaxed, 1 fits: Flowerpot VP9 portable lamp \$251\.15\.$/});
+en('something small for my desk under 20 dollars',{price:{max:20},ids:['cast-amber-mug','tissue-box','wood-tray'],reply:/^Found \d+ small things under \$20, for a desk or bedside\.$/});
+en('lamp under 500 yuan',{price:{max:74.58,asked:{currency:'CNY',max:500}},ids:['flowerpot-vp9'],reply:/under ¥500 \(about \$75\)/});
+en('wooden storage under $30',{price:{max:30},tags:['wood'],ids:['oak-wall-shelf','tissue-box','wood-tray','oak-hooks'],reply:/^Found 4 wooden storage pieces under \$30\.$/});
+en('a bedside table at most 50 cm wide',{kinds:['side-table'],sizes:[{axis:'w',max:50}],ids:['nesna-bedside'],reply:/^Found 1 bedside table up to 50 cm wide\.$/});
+en('a chair around 80 cm tall',{kinds:['chair'],sizes:[{axis:'h',min:68,max:92,around:true}],ids:['lisabo-chair']});
+en('a desk at least 80 cm and no more than 120 cm wide',{sizes:[{axis:'w',min:80,max:120}],ids:['lisabo-desk']});
+en('anything from MUJI under $20',{price:{max:20},has:['tissue-box','wood-tray'],not:['ikornnes-mirror'],reply:/from MUJI under \$20/});
+en('a Marshall speaker',{kinds:['speaker'],ids:['emberton-iii']});
+en('cheap decor',{reply:/^Found 3 affordable decor pieces\.$/});
+en('a sofa',{kinds:['sofa'],reply:/^The library has no sofas yet\. Show all 20\?$/});
+en('wall shelf',{kinds:['shelf'],ids:['oak-wall-shelf']});
+en('something for better sleep',{tags:['sleep'],ids:['aroma-diffuser']});
+en('show me everything',{reply:/^The library has 20 pieces\./});
+en('LISABO',{ids:['lisabo-desk','lisabo-chair'],reply:/matching “LISABO”/});
+en('a green candle holder between $10 to $30',{kinds:['candle'],price:{min:10,max:30},ids:['kivi-votive']});
 console.log(`${n} search sentences passed`);

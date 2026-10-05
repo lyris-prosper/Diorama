@@ -10,13 +10,15 @@
     "dev": "node scripts/start-local.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs",
+    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs && node tests/i18n.mjs",
     "scan": "node scripts/security-scan.mjs",
     "catalog": "node scripts/build-catalog.mjs",
     "setup:local": "node scripts/setup-local-models.mjs",
     "db:local": "wrangler d1 migrations apply DB --local --config wrangler.local.json --persist-to .wrangler/state"
   },
   "dependencies": {
+    "@fontsource-variable/figtree": "^5.3.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
     "@huggingface/transformers": "^3.8.1",
     "@sparkjsdev/spark": "^2.3.1",
     "class-variance-authority": "0.7.1",

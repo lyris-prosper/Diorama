@@ -6,18 +6,19 @@
 //
 // Points are read straight from the .spz files rather than from the renderer, whose splat set can
 // include generated level-of-detail splats that skew the statistics.
+import { currentLang, pick } from "./i18n";
 
 type Points = { xyz: Float32Array; alpha: Uint8Array; count: number };
 
 /** Splat centres (already flipped into the room's y-up frame: x, −y, −z) and opacities of an .spz (v2+). */
 export async function readSpzPoints(url: string): Promise<Points> {
   const res = await fetch(url);
-  if (!res.ok || !res.body) throw Error("房间文件读取失败。");
+  if (!res.ok || !res.body) throw Error(pick(currentLang())("房间文件读取失败。", "The room file could not be read."));
   const buf = await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
   const dv = new DataView(buf);
-  if (dv.getUint32(0, true) !== 0x5053474e) throw Error("房间文件格式无法识别。");
+  if (dv.getUint32(0, true) !== 0x5053474e) throw Error(pick(currentLang())("房间文件格式无法识别。", "The room file format is not recognised."));
   const version = dv.getUint32(4, true), count = dv.getUint32(8, true), frac = dv.getUint8(13);
-  if (version < 2) throw Error("房间文件版本过旧。");
+  if (version < 2) throw Error(pick(currentLang())("房间文件版本过旧。", "The room file is too old a version."));
   const bytes = new Uint8Array(buf), xyz = new Float32Array(count * 3), scale = 1 / (1 << frac);
   for (let i = 0, o = 16; i < count * 3; i++, o += 3) {
     let v = bytes[o] | (bytes[o + 1] << 8) | (bytes[o + 2] << 16);

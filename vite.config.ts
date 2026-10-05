@@ -22,6 +22,12 @@ export default defineConfig(async ({ command }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    server: {
+      // Vite turns console forwarding on when it detects a coding agent; while the HMR socket is down
+      // (the Mac slept, the server restarted) every forwarded warning then fails with “send was
+      // called before connect” and the failure is forwarded again. The browser console is enough.
+      forwardConsole: false,
+    },
     plugins: [
       // Loopback-only helpers in the dev server: provider relay, model slimming, local vision models.
       ...(command === "serve" ? [localRelay(), localModel(), localVision()] : []),

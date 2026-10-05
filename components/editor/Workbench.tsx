@@ -45,7 +45,7 @@ import { productPhoto } from "@/lib/photo";
 import CatalogPanel from "./CatalogPanel";
 import AddFurnitureDialog, { type NewPiece } from "./AddFurnitureDialog";
 import FurnitureInputs from "./FurnitureInputs";
-import type { FloorFit } from "./Scene";
+import type { FloorFit, PlacementApi } from "./Scene";
 import {
   prepareImages,
   preserveOutside,
@@ -238,6 +238,8 @@ export default function Workbench() {
   const fileRef = useRef<HTMLInputElement>(null),
     viewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(p);
+  // The 3D view's answers about pieces resting on each other (Scene.tsx).
+  const placement = useRef<PlacementApi | null>(null);
   stateRef.current = p;
   async function retryTask(taskId: string) {
     const current = stateRef.current;
@@ -450,6 +452,56 @@ export default function Workbench() {
   function patch(id: string, data: Partial<Item>) {
     if (p)
       changeItems(p.items.map((i) => (i.id === id ? { ...i, ...data } : i)));
+  }
+  type Move = { id: string; position: Item["position"] };
+  const moved = (items: Item[], moves: Move[]) => {
+    const at = new Map(moves.map((m) => [m.id, m.position]));
+    return items.map((i) => (at.has(i.id) ? { ...i, position: at.get(i.id)! } : i));
+  };
+  // A desk dragged with what stands on it: one step in the history.
+  function moveMany(moves: Move[]) {
+    if (p) changeItems(moved(p.items, moves));
+  }
+  // Pieces re-seated on a resized piece belong to the resize step, so no history entry of their own.
+  function adjust(moves: Move[]) {
+    setP((cur) => (cur ? { ...cur, items: moved(cur.items, moves) } : cur));
+    setDirty(true);
+  }
+  const shifted = (i: Item, dy: number): Item => ({ ...i, position: [i.position[0], i.position[1] + dy, i.position[2]] });
+  // Pieces that rested on `gone` (put away or removed) drop onto whatever is below them, and what
+  // they carry comes along.
+  function settleOff(items: Item[], gone: string): Item[] {
+    const api = placement.current;
+    const all = api?.riders(gone) ?? [];
+    if (!api || !all.length) return items;
+    const carriedBy = new Map(all.map((r) => [r, api.riders(r)]));
+    const nested = new Set([...carriedBy.values()].flat());
+    const dy = new Map<string, number>();
+    for (const r of all.filter((r) => !nested.has(r))) {
+      const it = items.find((i) => i.id === r);
+      if (!it) continue;
+      const carried = carriedBy.get(r)!;
+      const rest = api.restAt(it.position[0], it.position[2], it.position[1] + 0.02, [gone, r, ...carried]);
+      for (const k of [r, ...carried]) dy.set(k, rest - it.position[1]);
+    }
+    return items.map((i) => (dy.has(i.id) ? shifted(i, dy.get(i.id)!) : i));
+  }
+  // Turning a piece turns what stands on it about the piece's centre (the same turn as three.js rotation.y).
+  function turn(item: Item, delta: number) {
+    if (!p) return;
+    const riders = new Set(placement.current?.riders(item.id) ?? []);
+    const [cx, , cz] = item.position,
+      c = Math.cos(delta),
+      s = Math.sin(delta);
+    changeItems(
+      p.items.map((i) => {
+        if (i.id === item.id) return { ...i, rotation: i.rotation + delta };
+        if (!riders.has(i.id)) return i;
+        const dx = i.position[0] - cx,
+          dz = i.position[2] - cz;
+        return { ...i, rotation: i.rotation + delta, position: [cx + dx * c + dz * s, i.position[1], cz - dx * s + dz * c] };
+      }),
+    );
   }
   function undo() {
     if (!p || !history.length) return;
@@ -1001,7 +1053,10 @@ export default function Workbench() {
             reset={reset}
             focus={focus}
             onSelect={setSelected}
-            onMove={(id, pos) => patch(id, { position: pos })}
+            onMoveMany={moveMany}
+            onAdjust={adjust}
+            onEngine={(api) => (placement.current = api)}
+            onHint={setToast}
             onPlace={place}
             onThumb={thumb}
             onError={setError}
@@ -1517,8 +1572,18 @@ export default function Workbench() {
         {item?.status === "placed" && p && (() => {
           const entry = item.catalogId ? catalogItem(item.catalogId) : undefined;
           const lift = Math.round((item.position[1] - p.floor.height) * 100);
-          const raise = (cm: number) =>
-            patch(item.id, { position: [item.position[0], Math.max(p.floor.height, item.position[1] + cm / 100), item.position[2]] });
+          const carried = new Set(placement.current?.riders(item.id) ?? []);
+          // Raised or lowered, what stands on the piece goes with it.
+          const liftBy = (dy: number) =>
+            changeItems(p.items.map((i) => (i.id === item.id || carried.has(i.id) ? shifted(i, dy) : i)));
+          const raise = (cm: number) => liftBy(Math.max(p.floor.height, item.position[1] + cm / 100) - item.position[1]);
+          // Hung on a wall or left in mid-air: 落下 puts it on the desk, bed or floor under it.
+          const rest = placement.current?.restAt(item.position[0], item.position[2], item.position[1] + 0.02, [item.id, ...carried]) ?? p.floor.height;
+          const floating = item.position[1] - rest > 0.04;
+          const resize = (data: Partial<Item>) => {
+            placement.current?.carry(item.id);
+            patch(item.id, data);
+          };
           const size = (v: number) => Math.round(v * item.scale);
           return (
             <div className="inspector">
@@ -1557,9 +1622,7 @@ export default function Workbench() {
                 <button
                   className="icon"
                   aria-label="向左旋转"
-                  onClick={() =>
-                    patch(item.id, { rotation: item.rotation - Math.PI / 12 })
-                  }
+                  onClick={() => turn(item, -Math.PI / 12)}
                 >
                   <RotateCcw />
                 </button>
@@ -1569,9 +1632,7 @@ export default function Workbench() {
                 <button
                   className="icon"
                   aria-label="向右旋转"
-                  onClick={() =>
-                    patch(item.id, { rotation: item.rotation + Math.PI / 12 })
-                  }
+                  onClick={() => turn(item, Math.PI / 12)}
                 >
                   <RotateCw />
                 </button>
@@ -1580,25 +1641,21 @@ export default function Workbench() {
                 <button
                   className="icon"
                   aria-label="缩小家具"
-                  onClick={() =>
-                    patch(item.id, { scale: Math.max(0.1, Math.round((item.scale - 0.1) * 10) / 10) })
-                  }
+                  onClick={() => resize({ scale: Math.max(0.1, Math.round((item.scale - 0.1) * 10) / 10) })}
                 >
                   <Minus />
                 </button>
                 <button
                   className="value reset-scale"
                   title="恢复初始比例"
-                  onClick={() => patch(item.id, { scale: 1 })}
+                  onClick={() => resize({ scale: 1 })}
                 >
                   {Math.round(item.scale * 100)}%
                 </button>
                 <button
                   className="icon"
                   aria-label="放大家具"
-                  onClick={() =>
-                    patch(item.id, { scale: Math.min(5, Math.round((item.scale + 0.1) * 10) / 10) })
-                  }
+                  onClick={() => resize({ scale: Math.min(5, Math.round((item.scale + 0.1) * 10) / 10) })}
                 >
                   <Plus />
                 </button>
@@ -1631,18 +1688,16 @@ export default function Workbench() {
                       step=".05"
                       aria-label="家具初始高度"
                       value={item.height}
-                      onChange={(e) =>
-                        patch(item.id, { height: Number(e.target.value) || 1 })
-                      }
+                      onChange={(e) => resize({ height: Number(e.target.value) || 1 })}
                     />
                     <span>m</span>
                   </>
                 )}
                 <div className="inspector-actions">
-                {lift > 0 && (
-                  <button className="tool" title="放回地面" onClick={() => raise(-lift)}>
+                {floating && (
+                  <button className="tool" title="落到下面的桌面、床面或地面" onClick={() => liftBy(rest - item.position[1])}>
                     <ArrowDownToLine size={15} />
-                    落地
+                    落下
                   </button>
                 )}
                 {p.room?.erasures?.some((x) => x.item === item.id) && (
@@ -1654,7 +1709,7 @@ export default function Workbench() {
                 <button
                   className="tool"
                   onClick={() => {
-                    patch(item.id, { status: "ready" });
+                    changeItems(settleOff(p.items, item.id).map((i) => (i.id === item.id ? { ...i, status: "ready" as const } : i)));
                     setSelected(null);
                   }}
                 >
@@ -1665,7 +1720,7 @@ export default function Workbench() {
                   className="icon danger"
                   aria-label="移除选中家具"
                   onClick={() => {
-                    changeItems(p.items.filter((i) => i.id !== item.id));
+                    changeItems(settleOff(p.items, item.id).filter((i) => i.id !== item.id));
                     setSelected(null);
                   }}
                 >

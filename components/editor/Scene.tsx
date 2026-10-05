@@ -7,6 +7,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import type { CleanLayer, Erasure, Item, Project } from "@/lib/types";
 import { alignClean, readSpzPoints } from "@/lib/align-clean";
+import { buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, type RoomGrid } from "@/lib/placement";
 const asset = (key: string) =>
   key.startsWith("/") ? key : "/api/assets?key=" + encodeURIComponent(key);
 // Library models are meshopt-compressed; generated ones load the same way.
@@ -95,6 +96,17 @@ function demoRoom() {
   }
   return g;
 }
+const NO_SPOT = "这里放不下：对准地面，或桌面、床面这样的台面再放。";
+type Move = { id: string; position: [number, number, number] };
+/** What the page can ask the 3D view about how pieces rest on each other. */
+export type PlacementApi = {
+  /** Pieces resting on this one, and the ones resting on those. */
+  riders(id: string): string[];
+  /** Height a piece would rest at under x,z, below fromY, with the `ignore` pieces taken away. */
+  restAt(x: number, z: number, fromY: number, ignore: string[]): number;
+  /** Before a piece is resized: what rests on it is seated on its new top once the new size shows. */
+  carry(id: string): void;
+};
 type Props = {
   project: Project;
   selected: string | null;
@@ -102,8 +114,14 @@ type Props = {
   reset: number;
   focus: number;
   onSelect: (id: string | null) => void;
-  onMove: (id: string, pos: [number, number, number]) => void;
+  /** A drag ended: the piece and what rests on it, at their new spots. */
+  onMoveMany: (moves: Move[]) => void;
   onPlace: (id: string, pos: [number, number, number]) => void;
+  /** Pieces re-seated after a resize; not a step of its own in the undo history. */
+  onAdjust?: (moves: Move[]) => void;
+  onEngine?: (api: PlacementApi | null) => void;
+  /** A short message for the user, e.g. why a piece cannot go where it was dropped. */
+  onHint?: (s: string) => void;
   onThumb: (id: string, url: string) => void;
   onError: (s: string) => void;
   onFloorDetected?: (fit: FloorFit | null) => void;
@@ -305,15 +323,18 @@ export default function Scene(props: Props) {
     const ray = new THREE.Raycaster();
     const pt = new THREE.Vector2();
     let dragging: string | null = null,
-      // A piece lifted off every support (a shelf hung on the wall) slides at its own height.
+      // Pieces resting on the one being dragged travel with it (a lamp on a desk), from these spots.
+      starts = new Map<string, THREE.Vector3>(),
+      // A piece hung on a wall (nothing under it) slides at its own height.
       dragHeight: number | null = null,
-      start: [number, number, number] | null = null,
       pointerStart = [0, 0],
       dirty = true,
       frames = 0,
       room: THREE.Object3D | null = null,
       ghost: THREE.Group | null = null,
-      ghostId = "";
+      ghostId = "",
+      // The last spot the pending piece could land: it waits there while the pointer is over a wall.
+      lastLanding: THREE.Vector3 | null = null;
     const mark = () => {
       dirty = true;
       frames = 8;
@@ -340,24 +361,34 @@ export default function Scene(props: Props) {
         return null;
       return p;
     }
-    // Where a piece would land: on top of placed furniture under the pointer (a lamp on a desk),
-    // otherwise on the floor. The piece being moved never counts as its own support.
-    const up = new THREE.Vector3(),
-      normal = new THREE.Matrix3();
-    function surface(e: { clientX: number; clientY: number }, exclude?: string | null) {
-      // Aims the ray. Seen from eye height, the floor point behind a far table top can lie outside
-      // the area while the top itself is inside, so a top is judged on its own.
-      const p = floor(e);
+    const erasedBoxes = () => {
+      const p = live.current.project;
+      return eraseBoxes(p.room?.erasures ?? [], p.floor.height, engine.current?.cleanSplat ? 0.25 : 0);
+    };
+    const pieces = (skip: Set<string>) =>
+      [...objects.entries()].filter(([id, o]) => o.visible && !skip.has(id)).map(([, o]) => o);
+    // Where a piece would land, or null where it cannot go: whichever the pointer meets first of
+    // placed furniture (its top), the room scan (its floor, desk top, windowsill) and, in the demo
+    // room, its walls. The side of furniture puts the piece on top of it; a wall does not take it.
+    // `skip`: the pieces being moved, which never carry themselves.
+    function landing(e: { clientX: number; clientY: number }, skip: Set<string>): THREE.Vector3 | null {
+      const plane = floor(e);
       const f = live.current.project.floor;
-      const hit = ray.intersectObjects(
-        [...objects.entries()].filter(([id, o]) => o.visible && id !== exclude).map(([, o]) => o),
-        true,
-      )[0];
-      if (!hit?.face || !f.confirmed) return p;
-      up.copy(hit.face.normal).applyMatrix3(normal.getNormalMatrix(hit.object.matrixWorld)).normalize();
-      // Only an upward-facing top counts; the side of a cabinet leaves the piece on the floor.
-      if (Math.abs(up.y) < 0.75 || Math.abs(hit.point.x) > f.size / 2 || Math.abs(hit.point.z) > f.size / 2) return p;
-      return hit.point.clone();
+      if (!f.confirmed) return null;
+      const { origin, direction } = ray.ray;
+      const piece = hitPieces(ray, pieces(skip));
+      const grid: RoomGrid | null = engine.current?.grid ?? null;
+      if (grid) {
+        const scan = castRoom(grid, origin, direction, erasedBoxes());
+        if (piece && piece.t <= (scan?.t ?? Infinity)) return landOnPiece(piece, direction);
+        return scan && scan.kind !== "blocked" ? scan.point : null;
+      }
+      // No scan (the demo room, or while it is being read): furniture, the demo walls, the floor.
+      const set = room && live.current.project.mode === "demo" ? hitPieces(ray, [room]) : null;
+      const tPlane = plane ? plane.distanceTo(origin) : Infinity;
+      if (piece && piece.t <= Math.min(set?.t ?? Infinity, tPlane)) return landOnPiece(piece, direction);
+      if (set && set.t < tPlane - 0.02) return set.up ? (set.point.y - f.height < 0.03 ? set.point.setY(f.height) : set.point) : null;
+      return plane;
     }
     // Pointer on the horizontal plane at height y, within the placement area. (Pointing at a wall,
     // the floor point behind it is out of bounds while the point at hanging height is not.)
@@ -365,35 +396,52 @@ export default function Scene(props: Props) {
       floor(e);
       const f = live.current.project.floor;
       const p = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), new THREE.Vector3());
-      return p && f.confirmed && Math.abs(p.x) <= f.size / 2 && Math.abs(p.z) <= f.size / 2 ? p : null;
+      return p && f.confirmed && Math.abs(p.x) <= f.size / 2 + 0.5 && Math.abs(p.z) <= f.size / 2 + 0.5 ? p : null;
     }
-    // Above the floor with nothing directly underneath: lifted by hand, not resting on furniture.
-    const down3 = new THREE.Vector3(0, -1, 0);
-    function floating(id: string) {
+    // The height a piece would rest at under x,z: placed furniture, the scan or the floor below fromY.
+    function restAt(x: number, z: number, fromY: number, ignore: Iterable<string>) {
+      const f = live.current.project.floor,
+        grid: RoomGrid | null = engine.current?.grid ?? null;
+      return Math.max(
+        f.height,
+        piecesBelow(pieces(new Set(ignore)), x, z, fromY) ?? -Infinity,
+        grid ? roomBelow(grid, x, z, fromY, erasedBoxes()) : -Infinity,
+      );
+    }
+    // Hung on a wall: off the floor with nothing just under it. Such a piece slides at its height.
+    function hung(id: string) {
       const o = objects.get(id)!;
       if (o.position.y - live.current.project.floor.height < 0.02) return false;
-      const probe = new THREE.Raycaster(o.position.clone().add(new THREE.Vector3(0, 0.02, 0)), down3, 0, 0.06);
-      return !probe.intersectObjects([...objects.entries()].filter(([k, v]) => v.visible && k !== id).map(([, v]) => v), true).length;
+      const rest = restAt(o.position.x, o.position.z, o.position.y + 0.02, [id, ...ridersOf(id, objects)]);
+      return o.position.y - rest > 0.05;
+    }
+    function clearGhost() {
+      if (!ghost) return;
+      scene.remove(ghost);
+      ghost.traverse((o) => o instanceof THREE.Mesh && (o.material as THREE.Material).dispose());
+      ghost = null;
     }
     function preview(e: { clientX: number; clientY: number }, bare = false) {
       const id = live.current.pending;
       if (!id) {
         // Dragging a library card: no object yet, only the landing ring.
-        if (bare) {
-          const p = surface(e);
-          ring.visible = !!p;
-          if (p) ring.position.set(p.x, p.y + 0.02, p.z);
-          mark();
-        }
-        return;
+        if (!bare) return null;
+        const p = landing(e, new Set());
+        ring.visible = !!p;
+        if (p) ring.position.set(p.x, p.y + 0.02, p.z);
+        mark();
+        return p;
       }
-      const p = surface(e, id);
+      const p = landing(e, new Set([id]));
+      if (p) lastLanding = p;
+      const at = p ?? lastLanding;
       ring.visible = !!p;
-      if (p) {
-        ring.position.set(p.x, p.y + 0.02, p.z);
+      if (p) ring.position.set(p.x, p.y + 0.02, p.z);
+      renderer.domElement.style.cursor = p ? "" : "not-allowed";
+      if (at) {
         // Re-clone once the model has loaded: the first clone may be of the still-empty group.
         if (ghostId !== id || (ghost && !ghost.children.length && objects.get(id)?.children.length)) {
-          if (ghost) scene.remove(ghost);
+          clearGhost();
           const source = objects.get(id);
           if (source) {
             ghost = source.clone(true);
@@ -411,10 +459,11 @@ export default function Scene(props: Props) {
         }
         if (ghost) {
           ghost.visible = true;
-          ghost.position.copy(p);
+          ghost.position.copy(at);
         }
       } else if (ghost) ghost.visible = false;
       mark();
+      return p;
     }
     let downAt = [0, 0],
       draftGrab: THREE.Vector3 | null = null;
@@ -437,27 +486,19 @@ export default function Scene(props: Props) {
         return;
       }
       floor(e);
-      const hits = ray.intersectObjects(
-        [...objects.values()].filter((o) => o.visible),
-        true,
-      );
-      if (hits.length) {
-        let o = hits[0].object;
-        while (o.parent && !o.userData.itemId) o = o.parent;
-        const id = o.userData.itemId;
-        if (id) {
-          live.current.onSelect(id);
-          dragging = id;
-          start = objects.get(id)!.position.toArray() as [
-            number,
-            number,
-            number,
-          ];
-          dragHeight = floating(id) ? start[1] : null;
-          pointerStart = [e.clientX, e.clientY];
-          controls.enabled = false;
-          renderer.domElement.setPointerCapture(e.pointerId);
-        }
+      const hit = hitPieces(ray, pieces(new Set()));
+      // A piece the scan stands in front of (behind the wardrobe) is out of reach.
+      const grid: RoomGrid | null = engine.current?.grid ?? null;
+      const front = hit && grid ? castRoom(grid, ray.ray.origin, ray.ray.direction, erasedBoxes()) : null;
+      const id: string | undefined = hit && !(front && front.t < hit.t - 0.03) ? hit.root.userData.itemId : undefined;
+      if (id) {
+        live.current.onSelect(id);
+        dragging = id;
+        starts = new Map([id, ...ridersOf(id, objects)].map((k) => [k, objects.get(k)!.position.clone()]));
+        dragHeight = hung(id) ? starts.get(id)!.y : null;
+        pointerStart = [e.clientX, e.clientY];
+        controls.enabled = false;
+        renderer.domElement.setPointerCapture(e.pointerId);
       } else live.current.onSelect(null);
       mark();
     }
@@ -473,38 +514,38 @@ export default function Scene(props: Props) {
         return;
       }
       if (dragging) {
-        const p = dragHeight === null ? surface(e, dragging) : level(e, dragHeight);
-        if (p) objects.get(dragging)?.position.copy(p);
+        const p = dragHeight === null ? landing(e, new Set(starts.keys())) : level(e, dragHeight);
+        renderer.domElement.style.cursor = p ? "" : "not-allowed";
+        // Nowhere to go (a wall): the piece waits at its last good spot.
+        if (p) {
+          const delta = p.sub(starts.get(dragging)!);
+          for (const [k, s] of starts) objects.get(k)?.position.copy(s).add(delta);
+        }
         mark();
       }
     }
     function release(e: PointerEvent) {
-      if (live.current.pending) {
-        const p = surface(e, live.current.pending);
-        if (p)
-          live.current.onPlace(
-            live.current.pending,
-            p.toArray() as [number, number, number],
-          );
+      const pending = live.current.pending;
+      // Placed by a click on its spot, not by letting go after turning the view.
+      if (pending && e.button === 0 && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 5) {
+        const p = landing(e, new Set([pending]));
+        if (p) live.current.onPlace(pending, p.toArray() as [number, number, number]);
+        else live.current.onHint?.(NO_SPOT);
       }
       if (dragging) {
         const obj = objects.get(dragging)!;
-        // The piece only ever moves to valid spots, so a drag that ends outside the room keeps
-        // the last one instead of jumping back.
         if (
           Math.hypot(e.clientX - pointerStart[0], e.clientY - pointerStart[1]) > 3 &&
-          start &&
-          !obj.position.equals(new THREE.Vector3(...start))
+          !obj.position.equals(starts.get(dragging)!)
         )
-          live.current.onMove(
-            dragging,
-            obj.position.toArray() as [number, number, number],
+          live.current.onMoveMany(
+            [...starts.keys()].map((k) => ({ id: k, position: objects.get(k)!.position.toArray() as [number, number, number] })),
           );
-        else if (start) obj.position.set(...start);
+        else for (const [k, s] of starts) objects.get(k)?.position.copy(s);
       }
       // A plain click on the room (no drag) picks the piece of furniture under the pointer.
       const still = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4;
-      if (still && !dragging && !draftGrab && !live.current.pending && !live.current.eraseDraft && engine.current?.splat) {
+      if (still && !dragging && !draftGrab && !pending && !live.current.eraseDraft && engine.current?.splat) {
         floor(e);
         const hit = ray.intersectObject(engine.current.splat, false)[0];
         if (hit && hit.point.y - live.current.project.floor.height > 0.05) {
@@ -515,20 +556,26 @@ export default function Scene(props: Props) {
       }
       draftGrab = null;
       dragging = null;
+      starts = new Map();
       dragHeight = null;
+      if (!pending) renderer.domElement.style.cursor = "";
       controls.enabled = true;
       mark();
     }
     function cancel() {
       draftGrab = null;
-      if (dragging && start) objects.get(dragging)?.position.set(...start);
+      for (const [k, s] of starts) objects.get(k)?.position.copy(s);
       dragging = null;
+      starts = new Map();
+      dragHeight = null;
+      renderer.domElement.style.cursor = "";
       controls.enabled = true;
       mark();
     }
     const dragover = (e: DragEvent) => {
       e.preventDefault();
-      preview(e, true);
+      const p = preview(e, true);
+      if (e.dataTransfer) e.dataTransfer.dropEffect = p ? "copy" : "none";
     };
     const dragleave = () => {
       if (live.current.pending) return;
@@ -538,9 +585,10 @@ export default function Scene(props: Props) {
     const drop = (e: DragEvent) => {
       e.preventDefault();
       const id = e.dataTransfer?.getData("text/plain");
-      const p = surface(e, live.current.pending);
-      if (id && p)
-        live.current.onPlace(id, p.toArray() as [number, number, number]);
+      const pending = live.current.pending;
+      const p = landing(e, new Set(pending ? [pending] : []));
+      if (id && p) live.current.onPlace(id, p.toArray() as [number, number, number]);
+      else if (id) live.current.onHint?.(NO_SPOT);
       ring.visible = false;
       if (ghost) ghost.visible = false;
       mark();
@@ -717,6 +765,20 @@ export default function Scene(props: Props) {
       },
       disposed: () => disposed,
     };
+    live.current.onEngine?.({
+      riders: (id) => ridersOf(id, objects),
+      restAt,
+      carry: (id) => {
+        const support = objects.get(id);
+        if (!support?.visible) return;
+        // Height of each rider above the support's top under it, kept through the resize.
+        const list = ridersOf(id, objects).map((r) => {
+          const o = objects.get(r)!;
+          return { id: r, above: o.position.y - (topOfPiece(support, o.position.x, o.position.z)?.y ?? o.position.y) };
+        });
+        engine.current.carry = list.length ? { id, list } : null;
+      },
+    });
     let last = 0;
     renderer.setAnimationLoop((t) => {
       if (t - last < 30) return;
@@ -730,6 +792,7 @@ export default function Scene(props: Props) {
         ring.visible = false;
         if (ghost) ghost.visible = false;
         ghostId = "";
+        lastLanding = null;
       }
       if (dirty || frames > 0 || live.current.project.room) {
         // Seen edge-on (camera level with the floor grid) the grid is only a stray line.
@@ -757,6 +820,7 @@ export default function Scene(props: Props) {
       renderer.dispose();
       el.replaceChildren();
       engine.current = null;
+      live.current.onEngine?.(null);
     };
   }, [props.project.id]);
   useEffect(() => {
@@ -948,8 +1012,45 @@ export default function Scene(props: Props) {
       group.userData.height = base;
       group.scale.setScalar((item.scale * item.height) / base);
     }
+    // A resized piece: what rests on it sits on its new top.
+    const carry = e.carry;
+    if (carry) {
+      e.carry = null;
+      const support = e.objects.get(carry.id);
+      support?.updateMatrixWorld(true);
+      const moves: Move[] = [];
+      for (const r of carry.list) {
+        const o = e.objects.get(r.id);
+        const top = support && o ? topOfPiece(support, o.position.x, o.position.z) : null;
+        if (o && top && Math.abs(top.y + r.above - o.position.y) > 0.002) moves.push({ id: r.id, position: [o.position.x, top.y + r.above, o.position.z] });
+      }
+      if (moves.length) live.current.onAdjust?.(moves);
+    }
     e.mark();
   }, [props.project.items, props.project.floor, props.project.id, props.floorEditing]);
+  // The room scan's surfaces for placement (lib/placement.ts), read from the lighter .spz and
+  // rebuilt when the floor or the metric scale changes. Until it is ready, pieces land on
+  // furniture and the floor plane as before.
+  useEffect(() => {
+    const e = engine.current,
+      p = props.project,
+      room = p.room;
+    if (!e) return;
+    e.grid = null;
+    if (!room || p.mode !== "real" || !p.floor.confirmed) return;
+    let stale = false;
+    const key = room.splat;
+    const points = e.points?.key === key ? Promise.resolve(e.points.data) : readSpzPoints(asset(key)).then((data) => ((e.points = { key, data }), data));
+    points
+      .then((data) => {
+        if (stale || e.disposed()) return;
+        e.grid = buildRoomGrid(data, { scale: room.scale, offset: room.offset, floorY: p.floor.height, half: p.floor.size / 2 + 0.5 });
+      })
+      .catch(() => undefined);
+    return () => {
+      stale = true;
+    };
+  }, [props.project.id, props.project.mode, props.project.room?.splat, props.project.room?.scale, props.project.room?.offset, props.project.floor.height, props.project.floor.size, props.project.floor.confirmed]);
   useEffect(() => {
     const e = engine.current;
     const id = live.current.selected;

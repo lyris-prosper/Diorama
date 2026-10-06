@@ -31,14 +31,15 @@
   --lift-2: 0 1px 2px rgb(58 44 34 / 5%), 0 12px 30px rgb(58 44 34 / 10%), 0 34px 70px -24px rgb(58 44 34 / 22%);
   --lift-3: 0 2px 6px rgb(43 32 24 / 8%), 0 40px 110px -20px rgb(43 32 24 / 38%);
   --topbar: 64px;
-  /* Clear glass for what floats over the room: a white veil the room shows through, blurred and
-     brightened behind it so it stays light rather than taking on the wood's tone; a white highlight
-     along the top edge and a hairline outline draw the edge; a soft neutral shadow lifts it off. */
-  --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 72%) 0%, rgb(255 253 250 / 62%) 100%);
-  --glass-blur: blur(26px) saturate(1.2) brightness(1.1);
+  /* Clear glass for what floats over the room: a white veil the room shows through. Behind it the
+     room is blurred, mostly drained of colour and strongly brightened, so the wood and the walls come
+     through as light shapes and the panel stays bright and neutral instead of turning tan; a white
+     highlight along the top edge and a faint outline draw the edge; a light neutral shadow lifts it. */
+  --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 76%) 0%, rgb(255 255 255 / 72%) 100%);
+  --glass-blur: blur(30px) saturate(0.4) brightness(2);
   --glass-edge: linear-gradient(180deg, rgb(255 255 255 / 100%) 0%, rgb(255 255 255 / 0%) 60%);
-  --glass-shadow: 0 0 0 1px rgb(58 44 34 / 7%), 0 1px 2px rgb(58 44 34 / 5%), 0 10px 26px -12px rgb(58 44 34 / 18%),
-    0 26px 52px -30px rgb(58 44 34 / 20%);
+  --glass-shadow: 0 0 0 1px rgb(58 44 34 / 5%), 0 1px 2px rgb(58 44 34 / 4%), 0 10px 26px -14px rgb(58 44 34 / 12%),
+    0 24px 48px -32px rgb(58 44 34 / 12%);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   /* A pearly sheen inside the top edge: the slab reads soft, like a gel. */
   --jelly: inset 0 1px 0 rgb(255 255 255), inset 0 10px 18px -14px rgb(255 255 255);
@@ -1582,7 +1583,7 @@ input[type="number"] {
   width: min(740px, calc(100% - 32px));
   padding: 9px 10px 9px 18px;
   border-radius: 20px;
-  box-shadow: var(--glass-shadow), var(--jelly), 0 3px 0 -1px rgb(239 233 224), 0 14px 34px -14px rgb(58 44 34 / 22%);
+  box-shadow: var(--glass-shadow), var(--jelly), 0 3px 0 -1px rgb(255 255 255 / 70%), 0 14px 34px -16px rgb(58 44 34 / 14%);
   animation: jelly-in 0.62s cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 .inspector::after {

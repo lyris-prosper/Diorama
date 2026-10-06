@@ -663,7 +663,7 @@ export default function Scene(props: Props) {
     resize();
     function thumb(id: string, g: THREE.Group) {
       const ts = new THREE.Scene();
-      ts.background = new THREE.Color("#f3ece0");
+      ts.background = new THREE.Color("#f9f6f0");
       const clone = g.clone(true);
       clone.visible = true;
       clone.position.set(0, 0, 0);
@@ -683,7 +683,7 @@ export default function Scene(props: Props) {
       cam.lookAt(c);
       const old = renderer.getSize(new THREE.Vector2());
       renderer.setSize(260, 260, false);
-      renderer.setClearColor("#f3ece0", 1);
+      renderer.setClearColor("#f9f6f0", 1);
       renderer.render(ts, cam);
       live.current.onThumb(id, renderer.domElement.toDataURL("image/png"));
       renderer.setSize(old.x, old.y, false);

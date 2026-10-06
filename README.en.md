@@ -1,5 +1,7 @@
 # Diorama 方寸
 
+Try it online: <https://diorama.3dspace.workers.dev>
+
 > Rearrange your room without lifting a finger. Try it before you buy it.
 > 不用搬，就能换个摆法；不用买，就能先摆上看看。
 

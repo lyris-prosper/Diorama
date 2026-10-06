@@ -1,6 +1,6 @@
 # 方寸 Diorama
 
-[English README](README.en.md)
+[English README](README.en.md) · 在线体验：<https://diorama.3dspace.workers.dev>
 
 > 不用搬，就能换个摆法；不用买，就能先摆上看看。
 > Rearrange your room without lifting a finger. Try it before you buy it.

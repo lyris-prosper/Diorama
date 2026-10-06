@@ -727,7 +727,19 @@ export default function Maquette() {
     pieces.forEach((p) => (p.group.userData.piece = p));
     wallThings(walls, glows);
 
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.13 }));
+    // Shadows on the ground fade out near the edges of the view (at dusk the low sun throws them
+    // far, and the canvas edge would cut them off in a hard line).
+    const catcher = new THREE.ShadowMaterial({ opacity: 0.13 });
+    catcher.onBeforeCompile = (s) => {
+      s.vertexShader = "varying vec4 vClip;\n" + s.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n  vClip = gl_Position;");
+      s.fragmentShader =
+        "varying vec4 vClip;\n" +
+        s.fragmentShader.replace(
+          "#include <tonemapping_fragment>",
+          "vec2 ndc = vClip.xy / vClip.w;\n  gl_FragColor.a *= smoothstep(0.0, 0.16, min(1.0 - abs(ndc.x), 1.0 - abs(ndc.y)));\n  #include <tonemapping_fragment>",
+        );
+    };
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), catcher);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.24;
     ground.receiveShadow = true;

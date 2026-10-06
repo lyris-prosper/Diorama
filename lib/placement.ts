@@ -84,6 +84,84 @@ export function buildRoomGrid(
   return { cell: CELL, bin: BIN, x0: -half, z0: -half, y0, nx, nz, ny, raw, occ, floorY: o.floorY };
 }
 
+export type Ceiling = {
+  /** Height of the main ceiling (world y), or null when the scan shows none. */
+  level: number | null;
+  /** The ceiling over x,z: the lowest flat layer there (a beam, a soffit), else the main one. */
+  at(x: number, z: number): number;
+};
+const CEIL_CELL = 0.1;
+/**
+ * The ceiling of the room scan. Over the whole room it is the densest flat layer between 1.9 and
+ * 4.5 m above the floor; locally the lowest layer at least half as dense as the densest one above
+ * that spot, so a soffit or a beam lower than the ceiling is found where it is.
+ * Without a ceiling in the scan, `at` answers floor + 2.7 m.
+ */
+export function buildCeiling(points: ScanPoints, o: { scale: number; offset: number; floorY: number; half: number }): Ceiling {
+  const half = Math.max(1, o.half),
+    y0 = o.floorY + 1.9,
+    y1 = o.floorY + 4.5;
+  const n = Math.ceil((2 * half) / CEIL_CELL),
+    ny = Math.ceil((y1 - y0) / BIN);
+  const cells = new Uint16Array(n * n * ny),
+    whole = new Float64Array(ny);
+  const { xyz, alpha } = points,
+    s = o.scale;
+  for (let i = 0; i < points.count; i++) {
+    if (alpha[i] <= OPAQUE) continue;
+    const y = (xyz[i * 3 + 1] + o.offset) * s;
+    if (y < y0 || y >= y1) continue;
+    const ix = Math.floor((xyz[i * 3] * s + half) / CEIL_CELL),
+      iz = Math.floor((xyz[i * 3 + 2] * s + half) / CEIL_CELL),
+      iy = Math.floor((y - y0) / BIN);
+    if (ix < 0 || iz < 0 || ix >= n || iz >= n) continue;
+    const k = (iz * n + ix) * ny + iy;
+    if (cells[k] < 65535) cells[k]++;
+    whole[iy]++;
+  }
+  // The main ceiling: a peak well above the walls' even spread over the heights.
+  const sorted = [...whole].sort((a, b) => a - b),
+    median = sorted[Math.floor(sorted.length / 2)];
+  let peak = 0;
+  for (let y = 1; y < ny; y++) if (whole[y] > whole[peak]) peak = y;
+  const found = whole[peak] >= 50 && whole[peak] > 3 * Math.max(1, median);
+  const level = found ? y0 + (peak + 0.5) * BIN : null;
+  const fallback = level ?? o.floorY + 2.7;
+  const local = new Float32Array(n * n).fill(NaN);
+  const column = new Float64Array(ny);
+  for (let iz = 0; iz < n; iz++)
+    for (let ix = 0; ix < n; ix++) {
+      column.fill(0);
+      let total = 0;
+      for (let z = Math.max(0, iz - 1); z <= Math.min(n - 1, iz + 1); z++)
+        for (let x = Math.max(0, ix - 1); x <= Math.min(n - 1, ix + 1); x++)
+          for (let y = 0, k = (z * n + x) * ny; y < ny; y++, k++) {
+            column[y] += cells[k];
+            total += cells[k];
+          }
+      if (total < 12) continue;
+      let max = 0;
+      for (let y = 0; y < ny; y++) max = Math.max(max, column[y]);
+      // A flat layer stands out from what runs up and down through the column (a wall's face).
+      if (max < 12 || max < (3 * total) / ny) continue;
+      for (let y = 0; y < ny; y++)
+        if (column[y] >= max / 2 && (y === 0 || column[y] >= column[y - 1]) && (y === ny - 1 || column[y] >= column[y + 1])) {
+          local[iz * n + ix] = y0 + (y + 0.5) * BIN;
+          break;
+        }
+    }
+  return {
+    level,
+    at(x: number, z: number) {
+      const ix = Math.floor((x + half) / CEIL_CELL),
+        iz = Math.floor((z + half) / CEIL_CELL);
+      if (ix < 0 || iz < 0 || ix >= n || iz >= n) return fallback;
+      const v = local[iz * n + ix];
+      return Number.isNaN(v) ? fallback : v;
+    },
+  };
+}
+
 /** An erased box, ready for point tests: its contents are hidden from the scan. */
 export type EraseBox = { cx: number; cz: number; cos: number; sin: number; hx: number; hz: number; top: number; bottom: number };
 /**

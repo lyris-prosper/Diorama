@@ -26,6 +26,7 @@ export const kindWords: { kind: string; name: string; nameEn: string; pattern: R
   { kind: "sofa", name: "沙发", nameEn: "sofa", pattern: /沙发|\bsofas?\b|\bcouch(?:es)?\b/gi },
   { kind: "shelf", name: "搁板", nameEn: "shelf", pattern: /搁板|层板|隔板|置物架|壁挂架|\bshel(?:f|ves)\b/gi },
   { kind: "hook", name: "挂钩", nameEn: "hooks", pattern: /衣帽钩|挂钩|衣钩|\b(?:coat )?hooks?\b/gi },
+  { kind: "pendant", name: "吊灯", nameEn: "pendant light", pattern: /吊灯|吸顶灯|吊顶灯|\bpendants?(?: lights?| lamps?)?\b|\bchandeliers?\b|\bceiling (?:lights?|lamps?)\b/gi },
   { kind: "lamp", name: "台灯", nameEn: "lamp", pattern: /台灯|蘑菇灯|灯|\blamps?\b/gi },
   { kind: "candle", name: "烛台", nameEn: "candle holder", pattern: /烛台|蜡烛|\bcandle ?holders?\b|\bcandles?\b|\bvotives?\b|\btealights?\b/gi },
   { kind: "clock", name: "时钟", nameEn: "clock", pattern: /布谷鸟钟|挂钟|时钟|钟|\bclocks?\b/gi },
@@ -66,12 +67,18 @@ export const typicalSizes: Record<string, { name: string; nameEn: string; w: num
   cabinet: { name: "柜子", nameEn: "Cabinet", w: 100, d: 55, h: 200 },
   chair: { name: "椅子", nameEn: "Chair", w: 45, d: 50, h: 85 },
   sofa: { name: "沙发", nameEn: "Sofa", w: 200, d: 90, h: 85 },
+  pendant: { name: "吊灯", nameEn: "Pendant light", w: 45, d: 45, h: 70 },
   other: { name: "家具", nameEn: "Furniture", w: 80, d: 50, h: 80 },
 };
 
+const HANGING = /吊灯|吸顶灯|吊顶灯|\bpendants?\b|\bchandeliers?\b|\bceiling (?:lights?|lamps?)\b/i;
+/** Hangs from the ceiling: as the person set it, or by default a pendant light (by kind or name). */
+export const hangsFromCeiling = (i: { kind: string; name: string; mount?: "ceiling" | "floor" }) =>
+  i.mount ? i.mount === "ceiling" : i.kind === "pendant" || HANGING.test(i.name);
+
 /** Names the app gives furniture by itself (recognition, typical sizes): shown in English on the English page. */
 const DEFAULT_NAMES: Record<string, string> = {
-  床: "Bed", 书桌: "Desk", 桌子: "Table", 柜子: "Cabinet", 椅子: "Chair", 沙发: "Sofa", 长凳: "Bench", 家具: "Furniture", 手动家具: "Furniture",
+  床: "Bed", 书桌: "Desk", 吊灯: "Pendant light", 桌子: "Table", 柜子: "Cabinet", 椅子: "Chair", 沙发: "Sofa", 长凳: "Bench", 家具: "Furniture", 手动家具: "Furniture",
   // the example room's geometry
   橡木双人床: "Oak double bed", 原木书桌: "Wooden desk", 双门落地柜: "Two-door cabinet",
 };

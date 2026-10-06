@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import {harness} from './harness.mjs';
 const h=harness();
 const route=h.load('app/api/workbench/route.ts');
+// Credits reserved per piece at the high-detail settings.
+const E=h.load('lib/credits.ts').TRIPO_CREDITS;
 const assets=h.load('app/api/assets/route.ts');
 const asset=async key=>(await assets.GET(new Request('http://127.0.0.1:5173/api/assets?key='+encodeURIComponent(key)))).status;
 const URL_='http://127.0.0.1:5173/api/workbench';
@@ -90,7 +92,7 @@ await test('making a scanned piece editable reserves its generation and erases i
   const item=r.items[0];
   assert.equal(item.status,'queued');assert.equal(item.placeOnReady,true);assert.deepEqual(item.position,[0.5,-1.2,-3]);
   assert.deepEqual(r.room.erasures,[{id:item.id,item:item.id,...erase}]);
-  const job=h.sql.prepare('SELECT * FROM jobs').get();assert.equal(job.status,'queued');assert.equal(job.reserved,30);
+  const job=h.sql.prepare('SELECT * FROM jobs').get();assert.equal(job.status,'queued');assert.equal(job.reserved,E);assert.equal(JSON.parse(job.payload).quality,'hd');
   assert.equal(h.calls.length,0,'nothing is sent before the job runs');
 });
 await test('an erase box can be refitted, within sane limits',async()=>{
@@ -212,7 +214,7 @@ await test('a photo already made into 3D in another space is reused; a new photo
   const X='a'.repeat(64);
   h.insert(space('old',{room:room('old'),items:[{id:'chair',name:'椅子',kind:'chair',status:'placed',position:[0,0,0],rotation:0,scale:1,height:.8,model:'old/models/chair.lite.glb',thumbnail:'old/models/chair.png'}]}));
   h.file('old/models/chair.lite.glb','model/gltf-binary');
-  h.sql.prepare("INSERT INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated) VALUES('j','old','local-preview','furniture','chair','done',?,1,0,0,30)").run(JSON.stringify({image:`old/uploads/furniture-photo-${X}.png`}));
+  h.sql.prepare("INSERT INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated) VALUES('j','old','local-preview','furniture','chair','done',?,1,0,0,70)").run(JSON.stringify({image:`old/uploads/furniture-photo-${X}.png`,quality:'hd'}));
   h.insert(space('p',{room:room('p')}));
   h.file(`p/uploads/furniture-photo-${X}.png`);h.file('p/uploads/furniture-photo-'+'b'.repeat(64)+'.png');
   const r=(await post({action:'edit-furniture',id:'p',photo:`p/uploads/furniture-photo-${X}.png`,name:'椅子',kind:'chair',dims:{w:45,d:50,h:80},erase})).data;
@@ -225,6 +227,42 @@ await test('a photo already made into 3D in another space is reused; a new photo
   h.objects.delete('old/models/chair.lite.glb');
   const again=(await post({action:'edit-furniture',id:'p',photo:`p/uploads/furniture-photo-${X}.png`,name:'椅子',kind:'chair',dims:{w:45,d:50,h:80},erase})).data;
   assert.equal(again.items[2].status,'queued');
+});
+await test('a model made at the earlier, standard settings is not reused: the photo is made again in high detail',async()=>{
+  const X='c'.repeat(64);
+  h.insert(space('old',{room:room('old'),items:[{id:'chair',name:'椅子',kind:'chair',status:'placed',position:[0,0,0],rotation:0,scale:1,height:.8,model:'old/models/chair.lite.glb'}]}));
+  h.file('old/models/chair.lite.glb','model/gltf-binary');
+  h.sql.prepare("INSERT INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated) VALUES('j','old','local-preview','furniture','chair','done',?,1,0,0,30)").run(JSON.stringify({image:`old/uploads/furniture-photo-${X}.png`}));
+  h.insert(space('p',{room:room('p')}));h.file(`p/uploads/furniture-photo-${X}.png`);
+  const r=(await post({action:'edit-furniture',id:'p',photo:`p/uploads/furniture-photo-${X}.png`,name:'椅子',kind:'chair',dims:{w:45,d:50,h:80},erase})).data;
+  assert.equal(r.items[0].status,'queued');assert.equal(r.reused,undefined);
+});
+await test('regenerate: only a photo-made piece, only when confirmed, and only with the credits',async()=>{
+  const items=[
+    {id:'lamp',name:'Wide Pendant',kind:'other',status:'ready',position:[0,-1.2,0],rotation:0,scale:1,height:.3,model:'p/models/lamp.lite.glb'},
+    {id:'cup',name:'杯子',kind:'cup',status:'ready',position:[0,-1.2,0],rotation:0,scale:1,height:.1,model:'/catalog/models/cast-amber-mug.glb',catalogId:'cast-amber-mug',source:'catalog'},
+  ];
+  h.insert(space('p',{room:room('p'),items}));
+  h.sql.prepare("INSERT INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated) VALUES('p-furniture-lamp','p','local-preview','furniture','lamp','done',?,1,0,0,30)").run(JSON.stringify({image:'p/uploads/add-furniture-1.png'}));
+  await rejects({action:'regenerate',id:'p',item:'cup',confirmPaid:true},/只有用照片生成的家具/);
+  await rejects({action:'regenerate',id:'p',item:'lamp'},/明确确认/);
+  h.handler=url=>url.endsWith('/account/balance')?Response.json({code:0,data:{balance:E-1}}):Response.json({remaining_credits:0});
+  await rejects({action:'regenerate',id:'p',item:'lamp',confirmPaid:true},/积分不足/);
+  h.handler=url=>url.endsWith('/account/balance')?Response.json({code:0,data:{balance:1000}}):Response.json({remaining_credits:0});
+  const r=await post({action:'regenerate',id:'p',item:'lamp',confirmPaid:true});
+  assert.equal(r.status,200,JSON.stringify(r.data));
+  const job=h.sql.prepare("SELECT * FROM jobs WHERE id='p-furniture-lamp'").get();
+  assert.equal(job.status,'queued');assert.equal(job.attempt,2);assert.equal(job.reserved,E);assert.equal(JSON.parse(job.payload).quality,'hd');
+  assert.equal(r.data.items.find(i=>i.id==='lamp').model,'p/models/lamp.lite.glb','the old model stays until the new one is ready');
+  assert(r.data.tasks.some(t=>t.target==='lamp'&&t.status==='queued'));
+  assert(!h.calls.some(c=>c.init?.method==='POST'),'nothing paid is sent before the job runs');
+});
+await test('a piece can be hung from the ceiling or kept on the floor, and that is saved',async()=>{
+  const lamp={id:'lamp',name:'Wide Pendant',kind:'other',status:'placed',position:[0,1.0,0],rotation:0,scale:1,height:.8,model:'p/models/lamp.lite.glb'};
+  h.insert(space('p',{room:room('p'),items:[lamp]}));
+  let r=(await post({action:'save',id:'p',items:[{...lamp,mount:'ceiling'}]})).data;assert.equal(r.items[0].mount,'ceiling');
+  r=(await post({action:'save',id:'p',items:[{...lamp,mount:'floor',position:[0,-1.2,0]}]})).data;assert.equal(r.items[0].mount,'floor');
+  r=(await post({action:'save',id:'p',items:[{...lamp,mount:'wall'}]})).data;assert.equal(r.items[0].mount,undefined,'anything else is dropped');
 });
 await test('errors come back in English when the page is in English',async()=>{
   h.insert(space('p'));

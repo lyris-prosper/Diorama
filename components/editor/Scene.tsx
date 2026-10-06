@@ -8,7 +8,10 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import type { CleanLayer, Erasure, Project } from "@/lib/types";
 import { alignClean, readSpzPoints } from "@/lib/align-clean";
 import { currentLang, pick } from "@/lib/i18n";
-import { buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, type RoomGrid } from "@/lib/placement";
+import { buildCeiling, buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, type RoomGrid } from "@/lib/placement";
+import { fitBox, type FittedBox } from "@/lib/fit-box";
+import { fitScale } from "@/lib/fit-model";
+import { hangsFromCeiling } from "@/lib/furniture-kinds";
 const asset = (key: string) =>
   key.startsWith("/") ? key : "/api/assets?key=" + encodeURIComponent(key);
 // Library models are meshopt-compressed; generated ones load the same way.
@@ -107,6 +110,12 @@ export type PlacementApi = {
   restAt(x: number, z: number, fromY: number, ignore: string[]): number;
   /** Before a piece is resized: what rests on it is seated on its new top once the new size shows. */
   carry(id: string): void;
+  /** The erase box fitted to the room furniture at a clicked point (lib/fit-box.ts), or null. */
+  fitAt(point: [number, number, number], forward: [number, number]): FittedBox | null;
+  /** A piece's size as shown (metres, before its turn), and whether it keeps its photo's proportions. */
+  sizeOf(id: string): { size: [number, number, number]; uniform: boolean } | null;
+  /** The ceiling over x,z (world y); floor + 2.7 m where the scan shows none. */
+  ceilingAt(x: number, z: number): number;
 };
 type Props = {
   project: Project;
@@ -127,6 +136,8 @@ type Props = {
   onError: (s: string) => void;
   onFloorDetected?: (fit: FloorFit | null) => void;
   floorEditing?: boolean;
+  /** Clicks on the room offer to make the furniture there movable (the toolbar switch). */
+  pickEnabled?: boolean;
   /** A click on the room itself (not the floor, not placed furniture): world point and screen position. */
   onRoomPick?: (point: [number, number, number], screen: { x: number; y: number }, forward: [number, number]) => void;
   /** The erase box being fitted; its contents are hidden live and it can be dragged along the floor. */
@@ -332,6 +343,8 @@ export default function Scene(props: Props) {
       starts = new Map<string, THREE.Vector3>(),
       // A piece hung on a wall (nothing under it) slides at its own height.
       dragHeight: number | null = null,
+      // A piece hanging from the ceiling slides along it, this far below it.
+      hangDrop: number | null = null,
       pointerStart = [0, 0],
       dirty = true,
       frames = 0,
@@ -370,8 +383,9 @@ export default function Scene(props: Props) {
       const p = live.current.project;
       return eraseBoxes(p.room?.erasures ?? [], p.floor.height, engine.current?.cleanSplat ? 0.25 : 0);
     };
-    const pieces = (skip: Set<string>) =>
-      [...objects.entries()].filter(([id, o]) => o.visible && !skip.has(id)).map(([, o]) => o);
+    // Pieces in the room; `holding`: only those that can carry another (not what hangs from the ceiling).
+    const pieces = (skip: Set<string>, holding = false) =>
+      [...objects.entries()].filter(([id, o]) => o.visible && !skip.has(id) && !(holding && hanging(id))).map(([, o]) => o);
     // Where a piece would land, or null where it cannot go: whichever the pointer meets first of
     // placed furniture (its top), the room scan (its floor, desk top, windowsill) and, in the demo
     // room, its walls. The side of furniture puts the piece on top of it; a wall does not take it.
@@ -381,7 +395,7 @@ export default function Scene(props: Props) {
       const f = live.current.project.floor;
       if (!f.confirmed) return null;
       const { origin, direction } = ray.ray;
-      const piece = hitPieces(ray, pieces(skip));
+      const piece = hitPieces(ray, pieces(skip, true));
       const grid: RoomGrid | null = engine.current?.scan ?? null;
       if (grid) {
         const scan = castRoom(grid, origin, direction, erasedBoxes());
@@ -409,7 +423,7 @@ export default function Scene(props: Props) {
         grid: RoomGrid | null = engine.current?.scan ?? null;
       return Math.max(
         f.height,
-        piecesBelow(pieces(new Set(ignore)), x, z, fromY) ?? -Infinity,
+        piecesBelow(pieces(new Set(ignore), true), x, z, fromY) ?? -Infinity,
         grid ? roomBelow(grid, x, z, fromY, erasedBoxes()) : -Infinity,
       );
     }
@@ -420,6 +434,29 @@ export default function Scene(props: Props) {
       const rest = restAt(o.position.x, o.position.z, o.position.y + 0.02, [id, ...ridersOf(id, objects)]);
       return o.position.y - rest > 0.05;
     }
+    const itemOf = (id: string) => live.current.project.items.find((i) => i.id === id);
+    const hanging = (id: string) => {
+      const it = itemOf(id);
+      return !!it && hangsFromCeiling(it);
+    };
+    const ceilingAt = (x: number, z: number) => engine.current?.ceiling?.at(x, z) ?? live.current.project.floor.height + 2.7;
+    const ceilingLevel = () => engine.current?.ceiling?.level ?? live.current.project.floor.height + 2.7;
+    // A piece's height as shown; before its model has loaded, its own height.
+    function heightOf(id: string) {
+      const o = objects.get(id);
+      const b = o?.children.length ? new THREE.Box3().setFromObject(o) : null;
+      const it = itemOf(id);
+      return b && !b.isEmpty() ? b.max.y - b.min.y : (it?.height ?? 0.5) * (it?.scale ?? 1);
+    }
+    // A hanging piece follows the pointer along the ceiling: aimed at the ceiling, it goes under
+    // that spot; aimed lower (or seen from above the room), above the spot pointed at. Its top
+    // stays `drop` below the ceiling there.
+    function hangLanding(e: { clientX: number; clientY: number }, id: string, drop = 0) {
+      if (!live.current.project.floor.confirmed) return null;
+      const p = (camera.position.y < ceilingLevel() ? level(e, ceilingLevel()) : null) ?? landing(e, new Set([id]));
+      return p ? new THREE.Vector3(p.x, ceilingAt(p.x, p.z) - heightOf(id) - drop, p.z) : null;
+    }
+    const landingFor = (e: { clientX: number; clientY: number }, id: string) => (hanging(id) ? hangLanding(e, id) : landing(e, new Set([id])));
     function clearGhost() {
       if (!ghost) return;
       scene.remove(ghost);
@@ -437,7 +474,7 @@ export default function Scene(props: Props) {
         mark();
         return p;
       }
-      const p = landing(e, new Set([id]));
+      const p = landingFor(e, id);
       if (p) lastLanding = p;
       const at = p ?? lastLanding;
       ring.visible = !!p;
@@ -499,8 +536,15 @@ export default function Scene(props: Props) {
       if (id) {
         live.current.onSelect(id);
         dragging = id;
-        starts = new Map([id, ...ridersOf(id, objects)].map((k) => [k, objects.get(k)!.position.clone()]));
-        dragHeight = hung(id) ? starts.get(id)!.y : null;
+        if (hanging(id)) {
+          const at = objects.get(id)!.position;
+          starts = new Map([[id, at.clone()]]);
+          hangDrop = ceilingAt(at.x, at.z) - (at.y + heightOf(id));
+          dragHeight = null;
+        } else {
+          starts = new Map([id, ...ridersOf(id, objects)].map((k) => [k, objects.get(k)!.position.clone()]));
+          dragHeight = hung(id) ? starts.get(id)!.y : null;
+        }
         pointerStart = [e.clientX, e.clientY];
         controls.enabled = false;
         renderer.domElement.setPointerCapture(e.pointerId);
@@ -519,7 +563,8 @@ export default function Scene(props: Props) {
         return;
       }
       if (dragging) {
-        const p = dragHeight === null ? landing(e, new Set(starts.keys())) : level(e, dragHeight);
+        const p =
+          hangDrop !== null ? hangLanding(e, dragging, hangDrop) : dragHeight === null ? landing(e, new Set(starts.keys())) : level(e, dragHeight);
         renderer.domElement.style.cursor = p ? "" : "not-allowed";
         // Nowhere to go (a wall): the piece waits at its last good spot.
         if (p) {
@@ -533,7 +578,7 @@ export default function Scene(props: Props) {
       const pending = live.current.pending;
       // Placed by a click on its spot, not by letting go after turning the view.
       if (pending && e.button === 0 && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 5) {
-        const p = landing(e, new Set([pending]));
+        const p = landingFor(e, pending);
         if (p) live.current.onPlace(pending, p.toArray() as [number, number, number]);
         else live.current.onHint?.(NO_SPOT());
       }
@@ -550,7 +595,7 @@ export default function Scene(props: Props) {
       }
       // A plain click on the room (no drag) picks the piece of furniture under the pointer.
       const still = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4;
-      if (still && !dragging && !draftGrab && !pending && !live.current.eraseDraft && engine.current?.splat) {
+      if (still && !dragging && !draftGrab && !pending && !live.current.eraseDraft && live.current.pickEnabled && engine.current?.splat) {
         floor(e);
         const hit = ray.intersectObject(engine.current.splat, false)[0];
         if (hit && hit.point.y - live.current.project.floor.height > 0.05) {
@@ -563,6 +608,7 @@ export default function Scene(props: Props) {
       dragging = null;
       starts = new Map();
       dragHeight = null;
+      hangDrop = null;
       if (!pending) renderer.domElement.style.cursor = "";
       controls.enabled = true;
       mark();
@@ -573,6 +619,7 @@ export default function Scene(props: Props) {
       dragging = null;
       starts = new Map();
       dragHeight = null;
+      hangDrop = null;
       renderer.domElement.style.cursor = "";
       controls.enabled = true;
       mark();
@@ -591,7 +638,7 @@ export default function Scene(props: Props) {
       e.preventDefault();
       const id = e.dataTransfer?.getData("text/plain");
       const pending = live.current.pending;
-      const p = landing(e, new Set(pending ? [pending] : []));
+      const p = id && hanging(id) ? hangLanding(e, id) : landing(e, new Set(pending ? [pending] : []));
       if (id && p) live.current.onPlace(id, p.toArray() as [number, number, number]);
       else if (id) live.current.onHint?.(NO_SPOT());
       ring.visible = false;
@@ -783,6 +830,26 @@ export default function Scene(props: Props) {
         });
         engine.current.carry = list.length ? { id, list } : null;
       },
+      fitAt: (point, forward) => {
+        const e = engine.current,
+          p = live.current.project,
+          room = p.room;
+        const data = room && e?.points?.key === room.splat ? e.points.data : null;
+        if (!data || !room || !p.floor.confirmed) return null;
+        return fitBox(data, { scale: room.scale, offset: room.offset, floorY: p.floor.height, ceilingY: e.ceiling?.level ?? null }, point, forward);
+      },
+      sizeOf: (id) => {
+        const o = objects.get(id);
+        if (!o?.children.length) return null;
+        const turn = o.rotation.y;
+        o.rotation.y = 0;
+        o.updateMatrixWorld(true);
+        const s = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3());
+        o.rotation.y = turn;
+        o.updateMatrixWorld(true);
+        return s.lengthSq() ? { size: [s.x, s.y, s.z], uniform: !!o.userData.uniform } : null;
+      },
+      ceilingAt,
     });
     let last = 0;
     renderer.setAnimationLoop((t) => {
@@ -993,16 +1060,16 @@ export default function Scene(props: Props) {
               const pivot = new THREE.Group();
               // Library models are prepared at real size already; only user-given sizes reshape a model.
               if (item.dims && item.source !== "catalog") {
-                // Fit the model to its real size: the longer side of the footprint goes to the
-                // model's longer horizontal axis (turning it 90° when needed), height to height.
-                const w = item.dims.w / 100, d = item.dims.d / 100, h = item.dims.h / 100;
-                const swap = size.x >= size.z !== w >= d;
-                const kx = (swap ? d : w) / Math.max(size.x, 0.001),
-                  ky = h / Math.max(size.y, 0.001),
-                  kz = (swap ? w : d) / Math.max(size.z, 0.001);
+                // Fit the model to its real size (lib/fit-model.ts): the longer side of the footprint
+                // goes to the model's longer horizontal axis (turning it 90° when needed). Each axis
+                // takes its typed length when that agrees with the photo's proportions; otherwise
+                // the model is scaled evenly and keeps its shape.
+                const fit = fitScale([size.x, size.y, size.z], item.dims);
+                const [kx, ky, kz] = fit.scale;
                 model.scale.set(kx, ky, kz);
                 model.position.set(-center.x * kx, -b.min.y * ky, -center.z * kz);
-                if (swap) pivot.rotation.y = Math.PI / 2;
+                if (fit.swap) pivot.rotation.y = Math.PI / 2;
+                group.userData.uniform = fit.uniform;
               } else {
                 const k = item.height / Math.max(size.y, 0.001);
                 model.scale.setScalar(k);
@@ -1057,6 +1124,7 @@ export default function Scene(props: Props) {
       room = p.room;
     if (!e) return;
     e.scan = null;
+    e.ceiling = null;
     if (!room || p.mode !== "real" || !p.floor.confirmed) return;
     let stale = false;
     const key = room.splat;
@@ -1064,7 +1132,11 @@ export default function Scene(props: Props) {
     points
       .then((data) => {
         if (stale || e.disposed()) return;
-        e.scan = buildRoomGrid(data, { scale: room.scale, offset: room.offset, floorY: p.floor.height, half: p.floor.size / 2 + 0.5 });
+        const area = { scale: room.scale, offset: room.offset, floorY: p.floor.height, half: p.floor.size / 2 + 0.5 };
+        // The ceiling (for hanging pieces) also ends the scan grid, when it is a believable one.
+        e.ceiling = buildCeiling(data, area);
+        const ceilingY = e.ceiling.level !== null && e.ceiling.level - p.floor.height >= 2.2 ? e.ceiling.level : null;
+        e.scan = buildRoomGrid(data, { ...area, ceilingY });
       })
       .catch(() => undefined);
     return () => {

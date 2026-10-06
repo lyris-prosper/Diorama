@@ -1,6 +1,6 @@
 import { bindings, owner, getProject, saveProject, cacheRemote, slimModel } from "@/lib/server/storage";
 import { balances, parseIntent, readWorld, parseMarbleSource } from "@/lib/server/providers";
-import { enqueue, tick, retryJob } from "@/lib/server/jobs";
+import { enqueue, tick, retryJob, regenerateJob } from "@/lib/server/jobs";
 import { WORLD_ESTIMATE, TRIPO_ESTIMATE } from "@/lib/server/provider-http";
 import { budgetSummary } from "@/lib/server/job-budget";
 import { setFurnitureInput, addFurniture, addCatalogItem } from "@/lib/server/furniture";
@@ -210,6 +210,7 @@ export async function POST(req: Request) {
           rotation: Number(i.rotation) || 0,
           scale: Math.max(0.1, Math.min(5, Number(i.scale) || 1)),
           height: Math.max(0.01, Math.min(5, Number(i.height) || 1)),
+          mount: i.mount === "ceiling" || i.mount === "floor" ? i.mount : undefined,
         }));
       if (b.floor)
         p.floor = {
@@ -556,6 +557,18 @@ export async function POST(req: Request) {
     if (b.action === "tick") return Response.json(await tick(p.id, user));
     if (b.action === "retry") {
       await retryJob(b.task, p.id, user, b.confirmPaid === true);
+      return Response.json(await getProject(p.id, user));
+    }
+    if (b.action === "regenerate") {
+      const it = p.items.find((i) => i.id === b.item);
+      if (!it || !it.model || it.model.startsWith("/") || it.catalogId)
+        throw say("只有用照片生成的家具可以重新生成。", "Only pieces made from a photo can be regenerated.");
+      if (b.confirmPaid !== true)
+        throw say(`高精度重新生成预计消耗 ${TRIPO_ESTIMATE} 积分，请明确确认后再提交。`, `Regenerating in high detail costs about ${TRIPO_ESTIMATE} credits. Confirm before submitting.`);
+      const bal = await balances();
+      if (bal.tripo.error || !Number.isFinite(bal.tripo.data?.balance) || bal.tripo.data.balance < TRIPO_ESTIMATE)
+        throw say(bal.tripo.error || "Tripo 可用积分不足。", bal.tripo.errorEn || "Not enough Tripo credits.");
+      await regenerateJob(p.id, it.id, user);
       return Response.json(await getProject(p.id, user));
     }
     throw say("未知操作", "Unknown action.");

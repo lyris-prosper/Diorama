@@ -10,7 +10,7 @@
     "dev": "node scripts/start-local.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs && node tests/i18n.mjs",
+    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs && node tests/fit.mjs && node tests/i18n.mjs",
     "scan": "node scripts/security-scan.mjs",
     "catalog": "node scripts/build-catalog.mjs",
     "setup:local": "node scripts/setup-local-models.mjs",

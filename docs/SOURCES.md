@@ -60,3 +60,9 @@
 - `resources/validation/thumbnail.webp`：用户提供的示例卧室照片的缩略图，用作识别测试的参考图。
 - `resources/validation/living-room.webp`：为本工作台生成的客厅概念图，只用作识别测试的第二张参考图。
 - 示例房间里的床、书桌、柜子是本项目用 Three.js 几何体搭的，界面上明确标为示例，不冒充生成结果。
+
+## 演示素材（`resources/demo/`、`public/demo/`）
+
+- `bedroom.jpg`、`bed.png`：用户自己的卧室照片和床的照片。
+- `pendant.png`：用户找来的第三方吊灯商品图（Wide Pendant），只用于本地演示；公开发布前需要确认使用权。
+- `public/demo/bed.glb`、`public/demo/pendant.glb`：用上面两张照片经 Tripo 生成的模型（吊灯为 H3.1 高精度、8K 贴图原件的 4K 副本）。

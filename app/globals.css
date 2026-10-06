@@ -1005,37 +1005,6 @@ input[type="number"] {
   font-size: 11.5px;
   color: var(--ink-2);
 }
-.safari-note {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(520px, calc(100% - 32px));
-  padding: 28px 30px 24px;
-  border-radius: 22px;
-  border: 1px solid var(--line-strong);
-  background: var(--card);
-  box-shadow: var(--lift-2);
-}
-.safari-note h2 {
-  margin: 6px 0 10px;
-  font-family: var(--serif);
-  font-size: 22px;
-  font-weight: 600;
-}
-.safari-note p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.8;
-  color: var(--ink-2);
-}
-.safari-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 20px;
-  margin-top: 20px;
-}
 .photo-stage {
   position: absolute;
   inset: 120px 300px 110px 80px;

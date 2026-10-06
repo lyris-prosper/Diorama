@@ -144,16 +144,6 @@ function mergeItems(local: Item[], server: Item[]) {
     return i;
   });
 }
-/**
- * Safari on a Mac: its WebAssembly engine crashes while decoding the 3D room (seen on macOS 14.5,
- * repeatedly, until Safari gives up on the page). Chrome and Edge are fine.
- */
-const macSafari = () =>
-  typeof navigator !== "undefined" &&
-  /Macintosh/.test(navigator.userAgent) &&
-  /Safari\//.test(navigator.userAgent) &&
-  !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(navigator.userAgent);
-const SAFARI_OK = "room.safari-ok";
 // Requests say which language the page is in, so the server answers (and fails) in it.
 async function api(body: any): Promise<any> {
   const r = await fetch("/api/workbench", {
@@ -296,16 +286,6 @@ export default function Workbench() {
   const fileRef = useRef<HTMLInputElement>(null),
     viewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(p);
-  // In Safari the room waits behind a note until the person chooses to load it anyway (remembered).
-  // (Nothing the server renders depends on it: the home page is shown until a space is opened.)
-  const [safariHold, setSafariHold] = useState(() => {
-    if (!macSafari()) return false;
-    try {
-      return localStorage.getItem(SAFARI_OK) !== "1";
-    } catch {
-      return true;
-    }
-  });
   // The person's spaces for the home page; null until loaded.
   const [spaces, setSpaces] = useState<SpaceSummary[] | null>(null);
   const [spacesOpen, setSpacesOpen] = useState(false);
@@ -326,7 +306,10 @@ export default function Workbench() {
       setGenerationReady({world:!!j.world,furniture:!!j.furniture});
     }).catch(()=>{});
     // The home page comes first: the person picks a space, uploads a photo or opens the example.
+    // A link can open one space directly (…/?space=<id>), e.g. to rehearse a demo.
+    const linked = new URLSearchParams(location.search).get("space");
     loadSpaces()
+      .then(() => (linked ? openSpace(linked) : undefined))
       .catch((e) => setError(e.message))
       .finally(() => setBoot(false));
   }, []);
@@ -1345,42 +1328,7 @@ export default function Workbench() {
         }}
       />
       <section className={"workspace " + (!p ? "empty-workspace" : "") + (tab === "library" && !editDraft ? " library-open" : "") + (pickMode && !editDraft ? " picking" : "")}>
-        {p?.room && p.mode === "real" && safariHold ? (
-          <div className="safari-note" role="alert">
-            <span className="eyebrow">{t("浏览器提示", "Browser note")}</span>
-            <h2>{t("这个 3D 房间请用 Chrome 打开", "Please open this 3D room in Chrome")}</h2>
-            <p>
-              {t(
-                "Safari 加载 3D 房间时会反复崩溃（这是 Safari 的 WebAssembly 问题，和照片、网络无关）。用 Chrome 或 Edge 打开同一个地址就能正常查看；首页和示例房间在 Safari 里也能用。",
-                "Safari keeps crashing while it loads 3D rooms (a Safari WebAssembly issue, not your photo or network). Open the same address in Chrome or Edge and it works; the home page and the sample room are fine in Safari.",
-              )}
-            </p>
-            <div className="safari-actions">
-              <button
-                className="button primary"
-                onClick={() =>
-                  void navigator.clipboard
-                    .writeText(location.origin)
-                    .then(() => setToast(t("地址已复制，粘贴到 Chrome 的地址栏打开。", "Address copied. Paste it into Chrome's address bar.")))
-                    .catch(() => setToast(t("请在 Chrome 里打开 ", "Open this in Chrome: ") + location.origin))
-                }
-              >
-                {t("复制地址", "Copy address")}
-              </button>
-              <button
-                className="text-button"
-                onClick={() => {
-                  try {
-                    localStorage.setItem(SAFARI_OK, "1");
-                  } catch {}
-                  setSafariHold(false);
-                }}
-              >
-                {t("仍然在 Safari 中打开", "Open in Safari anyway")}
-              </button>
-            </div>
-          </div>
-        ) : p && (p.mode === "demo" || p.room) ? (
+        {p && (p.mode === "demo" || p.room) ? (
           <Scene
             project={p}
             selected={selected}

@@ -148,6 +148,13 @@ await test('add-furniture reuses a model already made from the same photo; only 
   assert.equal(only.status,200,JSON.stringify(only.data));assert.match(only.data.note,/未消耗积分/);
   const b=only.data.items.find(i=>i.id===only.data.added[0]);
   assert.equal(b.status,'ready');assert.equal(b.model,'/demo/bed.glb');assert.equal(jobs().length,0);assert.equal(calls.length,0);
+  // The demo pendant (resources/demo/pendant.png): an extra piece, made in high detail once.
+  const PENDANT='5f6779a81cf8acbecdb41922c5430c717e0ab775247d63396439d0cf7363ebf0';
+  png(`p/uploads/add-furniture-${PENDANT}.png`);
+  const lamp=await post({action:'add-furniture',id:'p',furniture:[{name:'木纹叠层吊灯',kind:'pendant',dims:{w:43,d:43,h:80},image:`p/uploads/add-furniture-${PENDANT}.png`}],approved:true});
+  assert.equal(lamp.status,200,JSON.stringify(lamp.data));
+  const l=lamp.data.items.find(i=>i.id===lamp.data.added[0]);
+  assert.equal(l.model,'/demo/pendant.glb');assert.equal(l.thumbnail,'/demo/pendant.webp');assert.equal(l.kind,'pendant');assert.equal(jobs().length,0);
   // Mixed: the reused one is free, the new one is reserved and queued.
   handler=balanceHandler(1000);
   const mixed=await post({action:'add-furniture',id:'p',furniture:[bed,...piece(1)],approved:true});

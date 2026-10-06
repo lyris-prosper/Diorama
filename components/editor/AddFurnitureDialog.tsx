@@ -5,13 +5,19 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { typicalSizes } from "@/lib/furniture-kinds";
 import { backdrop, backdropNote, PHOTO_TIPS, type Backdrop } from "@/lib/photo";
 import type { Dims } from "@/lib/types";
-import DimsFields, { noDims, readDims, type DimsDraft } from "./DimsFields";
+import DimsFields, { draftOf, noDims, readDims, type DimsDraft } from "./DimsFields";
+import { demoPieceFor } from "@/lib/demo-room";
 import { useLang, type T } from "@/lib/i18n";
 import { TRIPO_CREDITS as CREDITS } from "@/lib/credits";
 
 export const MAX_BATCH = 8;
 export type NewPiece = { file: File; name: string; kind: string; dims: Dims };
-type Row = { key: string; file: File | null; url: string; name: string; kind: string; dims: DimsDraft; note: Backdrop | null };
+/** `reuse`: the photo of a piece already made in high detail (the demo pendant): its model comes back, free. */
+type Row = { key: string; file: File | null; url: string; name: string; kind: string; dims: DimsDraft; note: Backdrop | null; reuse?: boolean };
+async function sha256(file: Blob) {
+  const d = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(d), (n) => n.toString(16).padStart(2, "0")).join("");
+}
 const blank = (): Row => ({ key: crypto.randomUUID(), file: null, url: "", name: "", kind: "other", dims: noDims, note: null });
 const missing = (r: Row, t: T) => {
   const m: string[] = [];
@@ -80,14 +86,28 @@ export default function AddFurnitureDialog({
       if (old.url) URL.revokeObjectURL(old.url);
       // A name from the file is a better start than nothing: “oak-desk.jpg” → “oak-desk”.
       const name = old.name || f.name.replace(/\.[^.]+$/, "").replace(/_+/g, " ").slice(0, 24);
-      next[at] = { ...old, file: f, url, name, note: null };
+      next[at] = { ...old, file: f, url, name, note: null, reuse: false };
       placed.push([old.key, f]);
       const from = at;
       at = next.findIndex((r, i) => i > from && !r.file);
     }
     setRows(next);
-    for (const [key, f] of placed)
+    for (const [key, f] of placed) {
       void backdrop(f).then((note) => setRows((cur) => cur.map((r) => (r.key === key && r.file === f ? { ...r, note } : r))));
+      // A photo already made into a model (the demo pendant) fills in its name, kind and size.
+      const fromFile = f.name.replace(/\.[^.]+$/, "").replace(/_+/g, " ").slice(0, 24);
+      void sha256(f).then((sha) => {
+        const piece = demoPieceFor(sha);
+        if (!piece) return;
+        setRows((cur) =>
+          cur.map((r) =>
+            r.key === key && r.file === f
+              ? { ...r, reuse: true, kind: piece.kind, dims: draftOf(piece.dims), name: !r.name.trim() || r.name === fromFile ? piece.name[lang] : r.name }
+              : r,
+          ),
+        );
+      });
+    }
   }
   function chooseKind(r: Row, kind: string) {
     const typical = typicalSizes[kind];
@@ -97,6 +117,8 @@ export default function AddFurnitureDialog({
   const filled = rows.filter((r) => r.file || r.name.trim() || readDims(r.dims) !== null);
   const blocked = filled.map((r) => missing(r, t)).find((m) => m.length);
   const count = filled.length;
+  // Only pieces that are actually generated cost credits and need the confirmation.
+  const paid = filled.filter((r) => !r.reuse).length;
   async function submit() {
     const pieces = filled.map((r) => ({ file: r.file!, name: r.name.trim(), kind: r.kind, dims: readDims(r.dims) as Dims }));
     setError("");
@@ -225,8 +247,14 @@ export default function AddFurnitureDialog({
                       </button>
                     )}
                   </div>
-                  <p className={"row-note" + (r.note === "busy" ? " warn" : r.note ? " good" : "")}>
-                    {r.note ? backdropNote[r.note][lang] : gaps.length && (r.file || r.name) ? t(`还差：${gaps.join("、")}`, `Still needs: ${gaps.join(", ")}`) : " "}
+                  <p className={"row-note" + (r.reuse ? " good" : r.note === "busy" ? " warn" : r.note ? " good" : "")}>
+                    {r.reuse
+                      ? t("这张照片已经高精度生成过 3D 模型，直接复用，不消耗积分。", "This photo was already made into a high-detail 3D model. It's reused, no credits.")
+                      : r.note
+                        ? backdropNote[r.note][lang]
+                        : gaps.length && (r.file || r.name)
+                          ? t(`还差：${gaps.join("、")}`, `Still needs: ${gaps.join(", ")}`)
+                          : " "}
                   </p>
                 </div>
               </article>
@@ -256,17 +284,19 @@ export default function AddFurnitureDialog({
           }}
         />
         <footer className="add-footer">
-          {ready ? (
+          {count > 0 && paid === 0 ? (
+            <p className="notice">{t("这些照片都已经生成过 3D 模型，直接放进家具栏，不消耗积分。", "These photos were all made into 3D before: they go straight to the shelf, no credits.")}</p>
+          ) : ready ? (
             <p className="notice">{ready}</p>
           ) : (
             <label className="approve">
-              <input type="checkbox" checked={agree} disabled={!!sending || !count} onChange={(e) => setAgree(e.target.checked)} />
+              <input type="checkbox" checked={agree} disabled={!!sending || !paid} onChange={(e) => setAgree(e.target.checked)} />
               <span>
                 {t("用 Tripo 高精度生成 ", "Generate ")}
-                <b>{count || 0}</b>
-                {t(" 件 3D 模型（8K 贴图），预计消耗 ", count === 1 ? " high-detail 3D model (8K textures) with Tripo, about " : " high-detail 3D models (8K textures) with Tripo, about ")}
+                <b>{paid || 0}</b>
+                {t(" 件 3D 模型（8K 贴图），预计消耗 ", paid === 1 ? " high-detail 3D model (8K textures) with Tripo, about " : " high-detail 3D models (8K textures) with Tripo, about ")}
                 <b>
-                  {CREDITS} × {count || 0} = {CREDITS * count}
+                  {CREDITS} × {paid || 0} = {CREDITS * paid}
                 </b>
                 {t(
                   " 积分。每件约 2–5 分钟，失败的那件可以单独重试；之前高精度生成过的照片直接复用，不再扣费。",
@@ -280,9 +310,14 @@ export default function AddFurnitureDialog({
             <button className="text-button" disabled={!!sending} onClick={close}>
               {t("取消", "Cancel")}
             </button>
-            <button className="button primary" disabled={!!sending || !!ready || !count || !!blocked || !agree} onClick={() => void submit()}>
+            <button className="button primary" disabled={!!sending || !count || !!blocked || (paid > 0 && (!!ready || !agree))} onClick={() => void submit()}>
               {sending ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}
-              {sending || (blocked ? t(`还差${blocked.join("、")}`, `Still needs ${blocked.join(", ")}`) : t(`开始生成 ${count || ""} 件`, `Generate ${count || ""}`))}
+              {sending ||
+                (blocked
+                  ? t(`还差${blocked.join("、")}`, `Still needs ${blocked.join(", ")}`)
+                  : paid
+                    ? t(`开始生成 ${count || ""} 件`, `Generate ${count || ""}`)
+                    : t(`放进家具栏 ${count} 件`, `Add ${count} to the shelf`))}
             </button>
           </div>
         </footer>

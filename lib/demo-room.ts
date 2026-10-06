@@ -1,7 +1,7 @@
 // The sample bedroom for demos. Its photo is recognised (same file, or the same picture re-saved),
 // and a fresh space opens its Marble 1.1 room at once: calibrated, with the empty-room layer
-// aligned, without World Labs. The bed in it was generated from a product photo once; the same
-// photo gets that model back instead of a new Tripo job.
+// aligned, without World Labs. The bed in it was generated from a product photo once, and so was a
+// pendant lamp to add to the room; the same photos get those models back instead of new Tripo jobs.
 // Shared by the server (lib/server/demo.ts) and the page (prefilled erase box, reuse notice).
 
 export type Bi = { zh: string; en: string };
@@ -73,14 +73,34 @@ export const DEMO_ROOM = {
       thumbnail: "/demo/bed.webp",
     },
   ],
+  /**
+   * Pieces to add to the room (“添加家具”), already made in high detail from their product photo
+   * (resources/demo/): the same photo puts the model on the shelf at once. The pendant hangs from
+   * the ceiling once placed; its size includes the rod.
+   */
+  extras: [
+    {
+      kind: "pendant",
+      name: { zh: "木纹叠层吊灯", en: "Layered wood pendant" } as Bi,
+      dims: { w: 43, d: 43, h: 80 },
+      photo: { sha256: "5f6779a81cf8acbecdb41922c5430c717e0ab775247d63396439d0cf7363ebf0", print: "" },
+      model: "/demo/pendant.glb",
+      thumbnail: "/demo/pendant.webp",
+    },
+  ],
 };
+/** A piece of the sample bedroom that stands in the room and can be erased from the scan (the bed). */
 export type DemoPiece = (typeof DEMO_ROOM.furniture)[number];
+/** A piece made from a product photo once, in the room or added to it. */
+export type DemoModel = Omit<DemoPiece, "erase" | "placed"> & Partial<Pick<DemoPiece, "erase" | "placed">>;
 
 export const isDemoPhoto = (key?: string, print?: string) =>
   shaOfKey(key) === DEMO_ROOM.photo.sha256 || (!!print && printDistance(print, DEMO_ROOM.photo.print) <= 8);
 /** A furniture photo this room already has a model for: the same file, or nearly the same picture. */
-export const demoPieceFor = (sha?: string, print?: string) =>
-  DEMO_ROOM.furniture.find((f) => (!!sha && f.photo.sha256 === sha) || (!!print && !!f.photo.print && printDistance(print, f.photo.print) <= 6));
+export const demoPieceFor = (sha?: string, print?: string): DemoModel | undefined =>
+  [...DEMO_ROOM.furniture, ...DEMO_ROOM.extras].find(
+    (f) => (!!sha && f.photo.sha256 === sha) || (!!print && !!f.photo.print && printDistance(print, f.photo.print) <= 6),
+  );
 /** The known piece whose erase box covers this floor point (x, z), if any. */
 export function demoPieceAt(x: number, z: number) {
   return DEMO_ROOM.furniture.find((f) => {

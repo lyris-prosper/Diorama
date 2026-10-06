@@ -2,6 +2,31 @@
 
 只记实际跑过的检查。“未执行”就是没有执行，不算通过。
 
+## 2026-10-06（第三轮）：Safari、吊灯演示素材、英文 README
+
+全程 0 积分。
+
+### Safari 17.5（macOS 14.5，Apple M3）
+
+- **原因**：这台 Mac 上 Safari 的 WebContent 崩溃报告共 11 份（10 月 4 日起），全部是同一处：`WebCore: Worker` 线程里 JavaScriptCore 的 `slow_path_wasm_simd_go_straight_to_bbq_osr` → `WTFCrashWithInfo`。即 WebAssembly 里用到 SIMD 的函数第一次运行、要直接编译到 BBQ 层时出错，出事的是 Spark 的 Worker。
+- **复现**（独立测试页，只用 three.js + Spark，在 Safari 里打开）：
+  - 只加载一个房间文件（50 万点或 192 万点）：不崩。
+  - 两个 192 万点的文件同时加载：3 次都崩（崩溃后 Safari 自动重载，再崩，然后放弃）。
+  - 同样两个文件依次加载（第一个加载完再开始第二个）：连续 4 次都不崩。
+  - 工作台本身：Spark 刚开始加载房间就崩（连续 3 次），此时进程里有 3 个 Worker：解码、排序，以及 Spark 从第一帧起就运行的细节层级（LOD）线程。
+- **修复**：
+  - `SparkRenderer({ enableLod: false })`：这里的房间没有 LOD 数据，关掉它的驱动线程。
+  - 空房间底图等房间解码完、再过 1.2 秒才开始加载。
+  - 去掉了“请用 Chrome 打开”的提示。
+- **验证**：工作台在 Safari 里连续打开 3 次（每次都用新标签页），房间约 1.7 秒、底图约 3.8 秒加载完成，没有新的崩溃报告。
+- 新增 `?space=<id>` 直接打开某个空间（测试和录屏用）。
+
+### 吊灯演示素材
+
+- `resources/demo/pendant.png`（与「我的空间」里生成过的吊灯照片字节相同）、`public/demo/pendant.glb`（高精度模型的 4K 副本，2.5 MB）、`public/demo/pendant.webp`。
+- 在内置浏览器里实测：添加家具时选这张照片，名称“木纹叠层吊灯”、类别“吊灯”、尺寸 43 × 43 × 80 自动填好，提示不消耗积分，按钮变为“放进家具栏 1 件”，不需要勾选积分确认。放进家具栏后点它再点地面：自动吊到天花板下（离地 191 cm）。
+- 离线测试：`furniture-workflow` 里同一张照片直接得到 `/demo/pendant.glb`，不建任务。
+
 ## 2026-10-06（第二轮）：首页细节、工作台面板、自动贴合、吊灯、高精度家具
 
 用户授权最多 3000 Tripo 积分用于测试。实际花费 **140 积分**（Tripo 余额 24,880 → 24,740），World Labs 0。

@@ -2,7 +2,7 @@
 // space owns and deleting a space never removes, and reuse of furniture models already generated.
 import { bindings, cacheRemote } from "./storage";
 import { TRIPO_QUALITY } from "./provider-http";
-import { DEMO_ROOM, demoPieceFor, shaOfKey, type DemoPiece } from "../demo-room";
+import { DEMO_ROOM, demoPieceFor, shaOfKey, type DemoModel } from "../demo-room";
 import type { Project } from "../types";
 
 /** Room files of the sample bedroom: copied from this Mac when they are here, else downloaded from Marble (free). */
@@ -32,7 +32,7 @@ export function applyDemoRoom(p: Project) {
   p.stage = "ready";
 }
 
-export type Reuse = { model: string; thumbnail?: string; piece?: DemoPiece };
+export type Reuse = { model: string; thumbnail?: string; piece?: DemoModel };
 /**
  * A model already made from this furniture photo: the sample bedroom's pieces first, then the
  * person's finished high-detail Tripo jobs whose input was the same file (its SHA-256 is in the

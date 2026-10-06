@@ -23,7 +23,7 @@
 | 3D 房间 | World Labs Marble 草稿生成；或导入 Marble 官网的房间 | `lib/server/providers.ts`、`app/api/workbench/route.ts` |
 | 同照片复用 | 64 位差异哈希，汉明距离 ≤ 8 视为同一张照片 | `set-print` |
 | 演示卧室 | 照片 SHA-256 或指纹匹配时，直接用预设的 Marble 1.1 房间和底图 | `lib/demo-room.ts`、`lib/server/demo.ts` |
-| 家具模型复用 | 同一张家具照片（SHA-256 相同）已高精度生成过模型时直接复用，不建 Tripo 任务；标准设置的旧模型不复用 | `reusableModel`（`lib/server/demo.ts`） |
+| 家具模型复用 | 同一张家具照片（SHA-256 相同）已高精度生成过模型时直接复用（演示用的床和吊灯模型在 `public/demo/`），不建 Tripo 任务；标准设置的旧模型不复用 | `reusableModel`（`lib/server/demo.ts`） |
 | 地面与比例 | 从碰撞网格或 splat 点云找地面和天花板，换算成米 | `components/editor/Scene.tsx` |
 | 擦除原家具 | 打开“挪动原家具”后点家具：擦除框从扫描自动贴合（见下）；框内的 splat 隐藏，空房间底图只在框内显示，自动对齐（平面图 FFT 互相关） | `lib/fit-box.ts`、`Scene.tsx`、`lib/align-clean.ts` |
 | 家具 3D | Tripo H3.1 图生模型：精细几何（`geometry_quality: detailed`）、8K PBR 贴图（`texture_quality: extreme`、`pbr`），约 70 积分。下载 PBR 版本，房间里用 4K 副本（底色 4096、法线 2048、金属度/粗糙度 1024，20 万面，大件 40 万面，meshopt），8K 原件保留可下载。已完成的家具可以重新生成（同一任务记录新一次尝试，之前的扣费保留） | `lib/server/provider-http.ts`、`lib/server/jobs.ts`、`scripts/optimize-glb.mjs` |
@@ -46,6 +46,13 @@
 压在一件家具上的东西（向下短探测会碰到它）会被当作它的“乘客”，随它移动和旋转。家具收回或删除时，乘客落到下面的表面；家具缩放后，乘客重新放到它的新顶面上。
 
 **天花板和吊挂**（`buildCeiling`）：用同一份 splat 中心，地面以上 1.9–4.5 m 里点最密的水平层是主天花板；每个 10 cm 格子取 3×3 邻域里最低、且不少于最密层一半的水平层，所以窗边比天花板低的吊顶梁能在原位认出来。扫描里没有天花板时按地面加 2.7 m。吊挂的家具（`mount: "ceiling"`，或类别是吊灯、名字里有吊灯 / pendant）顶端贴着所在位置的天花板；拖动时射线和天花板高度的平面求交，沿天花板移动，与天花板的距离保持不变；缩放时顶端不动。吊挂的家具不承载别的家具。
+
+## Safari
+
+Safari 17（macOS 14.5，Apple M3 上实测）的 JavaScriptCore 在两个 Web Worker 同时第一次运行 Spark 的 WebAssembly SIMD 代码时会崩溃（崩溃报告里是 `slow_path_wasm_simd_go_straight_to_bbq_osr` 里的 `WTFCrash`）。做法：
+- `SparkRenderer({ enableLod: false })`：这里的房间没有细节层级数据，不开它的驱动线程，少一个从第一帧起就运行的 Worker。
+- 空房间底图在房间文件解码完、第一次排序之后（约 1.2 秒）才开始加载，两个房间文件不会同时解码。
+- 页面不再提示“请用 Chrome”。
 
 ## 擦除框自动贴合（`lib/fit-box.ts`）
 

@@ -789,34 +789,50 @@ export default function Scene(props: Props) {
         }
         if (!c) return;
         const desktop = window.innerWidth > 900 && !window.matchMedia("(pointer: coarse)").matches;
-        // Outer group: alignment (shift, heading about the camera, scale). Inner: the world's flip.
-        const group = new THREE.Group(), flip = new THREE.Group();
-        flip.rotation.x = Math.PI;
-        const splat = new S.SplatMesh({ url: asset((desktop && c.splatFull) || c.splat), raycastable: false });
-        flip.add(splat);
-        group.add(flip);
-        group.scale.setScalar(c.scale);
-        group.rotation.y = c.yaw ?? 0;
-        group.position.set(...c.shift);
-        group.visible = false;
-        scene.add(group);
-        e.cleanGroup = group;
-        e.cleanSplat = splat;
-        e.syncErasures();
-        if (!c.aligned)
-          Promise.all([splat.initialized, e.splat.initialized])
-            .then(async () => {
-              // Read both lighter files directly (see lib/align-clean.ts) and register the plans.
-              const room = live.current.project.room;
-              if (e.disposed() || e.cleanSplat !== splat || !room) return;
-              const [mainPts, cleanPts] = await Promise.all([readSpzPoints(asset(room.splat)), readSpzPoints(asset(c.splat))]);
-              const fit = await alignClean(mainPts, cleanPts, room.scale, live.current.project.floor.height);
-              if (fit && e.cleanSplat === splat) live.current.onCleanAligned?.(fit);
-            })
-            .catch(() => undefined);
+        const roomSplat = e.splat;
+        // One room file is decoded at a time: Safari 17 crashes (a JavaScriptCore race when two of
+        // Spark's WebAssembly workers first run its SIMD code at once), so the empty-room layer
+        // starts once the room itself has loaded and its first sort has run.
+        roomSplat.initialized
+          .catch(() => undefined)
+          .then(() => new Promise((r) => setTimeout(r, 1200)))
+          .then(() => {
+            if (e.disposed() || e.cleanSig !== sig || e.splat !== roomSplat) return;
+            placeClean(c, desktop);
+          });
       },
       disposed: () => disposed,
     };
+    // The empty-room layer's splats, in their alignment, hidden until erasures reveal them.
+    function placeClean(c: CleanLayer, desktop: boolean) {
+      const e = engine.current;
+      const S = e.sparkLib;
+      // Outer group: alignment (shift, heading about the camera, scale). Inner: the world's flip.
+      const group = new THREE.Group(), flip = new THREE.Group();
+      flip.rotation.x = Math.PI;
+      const splat = new S.SplatMesh({ url: asset((desktop && c.splatFull) || c.splat), raycastable: false });
+      flip.add(splat);
+      group.add(flip);
+      group.scale.setScalar(c.scale);
+      group.rotation.y = c.yaw ?? 0;
+      group.position.set(...c.shift);
+      group.visible = false;
+      scene.add(group);
+      e.cleanGroup = group;
+      e.cleanSplat = splat;
+      e.syncErasures();
+      if (!c.aligned)
+        Promise.all([splat.initialized, e.splat.initialized])
+          .then(async () => {
+            // Read both lighter files directly (see lib/align-clean.ts) and register the plans.
+            const room = live.current.project.room;
+            if (e.disposed() || e.cleanSplat !== splat || !room) return;
+            const [mainPts, cleanPts] = await Promise.all([readSpzPoints(asset(room.splat)), readSpzPoints(asset(c.splat))]);
+            const fit = await alignClean(mainPts, cleanPts, room.scale, live.current.project.floor.height);
+            if (fit && e.cleanSplat === splat) live.current.onCleanAligned?.(fit);
+          })
+          .catch(() => undefined);
+    }
     live.current.onEngine?.({
       riders: (id) => ridersOf(id, objects),
       restAt,
@@ -915,7 +931,9 @@ export default function Scene(props: Props) {
           if (e.disposed()) return;
           e.sparkLib = sparkLib;
           if (!e.spark) {
-            e.spark = new SparkRenderer({ renderer: e.renderer });
+            // Rooms here have no level-of-detail data; without its driver Spark runs one worker
+            // fewer (see loadClean on why fewer workers at once matters to Safari).
+            e.spark = new SparkRenderer({ renderer: e.renderer, enableLod: false });
             e.scene.add(e.spark);
           }
           const group = new THREE.Group();

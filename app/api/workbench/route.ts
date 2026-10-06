@@ -288,15 +288,16 @@ export async function POST(req: Request) {
         let position: [number, number, number] = [e.center[0], p.floor.height, e.center[2]];
         let rotation = e.rotation;
         const known = reuse.piece;
-        if (known) {
+        if (known?.erase && known.placed) {
+          const { erase, placed } = known;
           // The generated model faces another way than the box; and in the sample room, a box
           // left where it was offered puts the piece exactly where it stood.
-          rotation = known.placed.rotation + (e.rotation - known.erase.rotation);
-          if (p.room.preset === DEMO_ROOM.id && Math.hypot(e.center[0] - known.erase.center[0], e.center[2] - known.erase.center[2]) < 0.3)
+          rotation = placed.rotation + (e.rotation - erase.rotation);
+          if (p.room.preset === DEMO_ROOM.id && Math.hypot(e.center[0] - erase.center[0], e.center[2] - erase.center[2]) < 0.3)
             position = [
-              Math.round((known.placed.position[0] + e.center[0] - known.erase.center[0]) * 1e4) / 1e4,
+              Math.round((placed.position[0] + e.center[0] - erase.center[0]) * 1e4) / 1e4,
               p.floor.height,
-              Math.round((known.placed.position[2] + e.center[2] - known.erase.center[2]) * 1e4) / 1e4,
+              Math.round((placed.position[2] + e.center[2] - erase.center[2]) * 1e4) / 1e4,
             ];
         }
         p.items.push({

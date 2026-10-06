@@ -8,7 +8,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import type { CleanLayer, Erasure, Project } from "@/lib/types";
 import { alignClean, readSpzPoints } from "@/lib/align-clean";
 import { currentLang, pick } from "@/lib/i18n";
-import { buildCeiling, buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, type RoomGrid } from "@/lib/placement";
+import { buildCeiling, buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, wallHeading, type RoomGrid } from "@/lib/placement";
 import { fitBox, type FittedBox } from "@/lib/fit-box";
 import { fitScale } from "@/lib/fit-model";
 import { hangsFromCeiling } from "@/lib/furniture-kinds";
@@ -116,6 +116,8 @@ export type PlacementApi = {
   sizeOf(id: string): { size: [number, number, number]; uniform: boolean } | null;
   /** The ceiling over x,z (world y); floor + 2.7 m where the scan shows none. */
   ceilingAt(x: number, z: number): number;
+  /** The turn that squares a piece with the room's walls (lib/placement.ts wallHeading), or null. */
+  heading(): number | null;
 };
 type Props = {
   project: Project;
@@ -866,6 +868,7 @@ export default function Scene(props: Props) {
         return s.lengthSq() ? { size: [s.x, s.y, s.z], uniform: !!o.userData.uniform } : null;
       },
       ceilingAt,
+      heading: () => engine.current?.heading ?? null,
     });
     let last = 0;
     renderer.setAnimationLoop((t) => {
@@ -1143,6 +1146,7 @@ export default function Scene(props: Props) {
     if (!e) return;
     e.scan = null;
     e.ceiling = null;
+    e.heading = null;
     if (!room || p.mode !== "real" || !p.floor.confirmed) return;
     let stale = false;
     const key = room.splat;
@@ -1153,6 +1157,7 @@ export default function Scene(props: Props) {
         const area = { scale: room.scale, offset: room.offset, floorY: p.floor.height, half: p.floor.size / 2 + 0.5 };
         // The ceiling (for hanging pieces) also ends the scan grid, when it is a believable one.
         e.ceiling = buildCeiling(data, area);
+        e.heading = wallHeading(data, area);
         const ceilingY = e.ceiling.level !== null && e.ceiling.level - p.floor.height >= 2.2 ? e.ceiling.level : null;
         e.scan = buildRoomGrid(data, { ...area, ceilingY });
       })

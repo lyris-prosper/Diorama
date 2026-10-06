@@ -179,7 +179,14 @@ await test('add-catalog-item adds a ready library piece without any service call
   assert.equal(item.source,'catalog');assert.equal(item.catalogId,'flowerpot-vp9');assert.deepEqual(item.dims,entry.dims);
   const placed=await post({action:'add-catalog-item',id:'p',catalogId:'lisabo-desk',position:[1,0,-.5]});
   const desk=placed.data.items.find(i=>i.id===placed.data.added);
-  assert.equal(desk.status,'placed');assert.deepEqual(desk.position,[1,0,-.5]);
+  assert.equal(desk.status,'placed');assert.deepEqual(desk.position,[1,0,-.5]);assert.equal(desk.rotation,0);
+  // Squared with the walls by the page: the turn is kept when placed, ignored on the shelf or when junk.
+  const turned=await post({action:'add-catalog-item',id:'p',catalogId:'nesna-bedside',position:[0,0,0],rotation:0.349});
+  assert.equal(turned.data.items.find(i=>i.id===turned.data.added).rotation,0.349);
+  for(const [body,why] of [[{position:[0,0,0],rotation:'x'},'junk'],[{position:[0,0,0],rotation:99},'too far'],[{rotation:0.349},'on the shelf']]){
+    const r2=await post({action:'add-catalog-item',id:'p',catalogId:'nesna-bedside',...body});
+    assert.equal(r2.data.items.find(i=>i.id===r2.data.added).rotation,0,why);
+  }
   await rejects({action:'add-catalog-item',id:'p',catalogId:'lisabo-desk',position:[1,0,'x']},/位置无效/);
   await rejects({action:'add-catalog-item',id:'p',catalogId:'lisabo-desk',position:[1,0,99]},/位置无效/);
   assert.equal(jobs().length,0);assert.equal(calls.length,0);

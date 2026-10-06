@@ -117,7 +117,7 @@ npm run lint
 - `lib/i18n.ts`: the two languages; every interface text is written as `t("中文", "English")`.
 - `lib/demo-room.ts`, `lib/server/demo.ts`: the sample bedroom (photo, Marble 1.1 room, empty-room layer, bed and pendant models) and model reuse.
 - `components/editor/Scene.tsx`: the 3D view (three.js + Spark).
-- `lib/placement.ts`: where pieces land and what stands on what; also the ceiling estimate.
+- `lib/placement.ts`: where pieces land and what stands on what; also the ceiling and wall-direction estimates (new pieces are put down square with the walls).
 - `lib/fit-box.ts`: finds the clicked piece in the room scan and fits the erase box to it. `lib/fit-model.ts`: how a generated model is sized to the typed dimensions.
 - `lib/credits.ts`: estimated credits per generation.
 - `app/api/workbench/route.ts`: the local server API (spaces, uploads, generation jobs, library).

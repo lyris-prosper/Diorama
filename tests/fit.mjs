@@ -99,6 +99,18 @@ check('the smallest rectangle around a turned square is the square',()=>{
   const c=Math.cos(0.4),s=Math.sin(0.4),sq=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,z])=>[x*c-z*s,x*s+z*c]);
   const r=F.minRectangle(sq);near(r.area,4,1e-6,'area');near(r.len[0],2,1e-6);near(r.len[1],2,1e-6);
 });
+check('the walls\' heading: square rooms, turned rooms, and none without walls',()=>{
+  const deg=(r)=>r*180/Math.PI,mod90=(d)=>Math.min(((d%90)+90)%90,90-((d%90)+90)%90);
+  const area={scale:1,offset:0,floorY:0,half:3.5};
+  assert(mod90(deg(P.wallHeading(scan,area)))<0.3,'square room');
+  // The same room turned 25° (three.js rotation.y): the walls follow.
+  const a=25*Math.PI/180,c=Math.cos(a),s=Math.sin(a),xyz=new Float32Array(scan.xyz.length);
+  for(let i=0;i<scan.count;i++){const x=scan.xyz[i*3],z=scan.xyz[i*3+2];xyz[i*3]=x*c+z*s;xyz[i*3+1]=scan.xyz[i*3+1];xyz[i*3+2]=-x*s+z*c;}
+  near(deg(P.wallHeading({...scan,xyz},area)),25,0.3,'turned room');
+  let seed=3;const r=()=>(seed=(seed*9301+49297)%233280)/233280;
+  const fog=new Float32Array(30000*3);for(let i=0;i<30000;i++){const t=r()*2*Math.PI,d=Math.sqrt(r())*3;fog.set([Math.cos(t)*d,1.2+r()*0.8,Math.sin(t)*d],i*3);}
+  assert.equal(P.wallHeading({xyz:fog,alpha:new Uint8Array(30000).fill(255),count:30000},area),null,'no walls');
+});
 check('a model whose proportions match the typed size is sized exactly',()=>{
   const f=M.fitScale([1.0,0.55,1.4],{w:150,d:200,h:80});
   assert.equal(f.uniform,false);assert.equal(f.swap,false);

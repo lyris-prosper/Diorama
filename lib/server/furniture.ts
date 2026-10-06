@@ -124,13 +124,15 @@ export function addCatalogItem(p: Project, b: Body) {
   // Dropped straight into the room: placed where it was dropped.
   const at = b.position === undefined ? null : point(b.position);
   if (b.position !== undefined && !at) throw say("放置位置无效。", "That spot isn't valid.");
+  // The turn that squares it with the room's walls, worked out by the page; anything else is 0.
+  const turn = at && typeof b.rotation === "number" && Number.isFinite(b.rotation) && Math.abs(b.rotation) <= 2 * Math.PI ? b.rotation : 0;
   const item: Item = {
     id: crypto.randomUUID(),
     name: c.name,
     kind: c.kind,
     status: at ? "placed" : "ready",
     position: at ?? [0, p.floor.height, 0],
-    rotation: 0,
+    rotation: turn,
     scale: 1,
     height: c.modelHeight,
     dims: c.dims,

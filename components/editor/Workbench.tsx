@@ -842,6 +842,11 @@ export default function Workbench() {
       await api({ action: "generate", id: p.id, skip, approved, background }),
     );
   }
+  // A piece put down for the first time is turned to the nearest angle square with the walls.
+  function squared(turn = 0) {
+    const h = placement.current?.heading() ?? null;
+    return h === null ? turn : h + Math.round((turn - h) / (Math.PI / 2)) * (Math.PI / 2);
+  }
   function place(id: string, pos: [number, number, number]) {
     const current = stateRef.current;
     if (!current?.floor.confirmed) {
@@ -857,10 +862,10 @@ export default function Workbench() {
       setPending(null);
       return;
     }
-    patch(id, { status: "placed", position: pos });
+    const placed = current.items.find((i) => i.id === id);
+    patch(id, { status: "placed", position: pos, rotation: placed?.rotation ? placed.rotation : squared() });
     setSelected(id);
     setPending(null);
-    const placed = current.items.find((i) => i.id === id);
     setToast(
       placed?.catalogId && catalogItem(placed.catalogId)?.wall
         ? t("这是壁挂家具：拖到墙边，再用“离地”把它挂上去。", "This one hangs on a wall: drag it to the wall, then raise it with “Height”.")
@@ -1127,7 +1132,7 @@ export default function Workbench() {
     const cur = stateRef.current;
     if (!cur) return;
     const entry = catalogItem(catalogId);
-    const next = await api({ action: "add-catalog-item", id: cur.id, catalogId, position: at });
+    const next = await api({ action: "add-catalog-item", id: cur.id, catalogId, position: at, rotation: at ? squared() : undefined });
     takeAdded(next, true);
     if (at) {
       setSelected(next.added);

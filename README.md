@@ -117,7 +117,7 @@ npm run lint
 - `lib/i18n.ts`：中英文切换，界面文字都写成 `t("中文", "English")`。
 - `lib/demo-room.ts`、`lib/server/demo.ts`：演示卧室（照片、Marble 1.1 房间、底图、床模型）和模型复用。
 - `components/editor/Scene.tsx`：3D 视图（three.js + Spark）。
-- `lib/placement.ts`：摆放规则，即家具落在哪里、谁叠在谁上面；也从扫描里估计天花板。
+- `lib/placement.ts`：摆放规则，即家具落在哪里、谁叠在谁上面；也从扫描里估计天花板和墙的朝向（新放下的家具与墙对齐）。
 - `lib/fit-box.ts`：从房间扫描里找出被点中的家具，给出贴合它的擦除框。`lib/fit-model.ts`：生成的模型按填写尺寸缩放的规则。
 - `lib/credits.ts`：每次生成预计花费的积分。
 - `app/api/workbench/route.ts`：本地服务端接口（空间、上传、生成任务、家具库）。

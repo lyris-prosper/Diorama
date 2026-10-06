@@ -162,6 +162,68 @@ export function buildCeiling(points: ScanPoints, o: { scale: number; offset: num
   };
 }
 
+const WALL_BIN = 0.04;
+const DEG = Math.PI / 180;
+/**
+ * The turn (radians, 0 to 90°) that squares a piece with the room's walls: turned by it (three.js
+ * rotation.y), or by it plus any quarter turn, a piece's sides run along the walls. Splats 1.2–2 m
+ * above the floor (over beds and desks, under the ceiling) are projected onto a piece's axes at each
+ * candidate turn; walls are straight, so the right turn gives the sharpest histograms. Null when no
+ * turn stands out (a scan without clear walls).
+ */
+export function wallHeading(points: ScanPoints, o: { scale: number; offset: number; floorY: number; half: number }): number | null {
+  const s = o.scale,
+    lo = o.floorY + 1.2,
+    hi = o.floorY + 2,
+    lim = Math.max(1, o.half);
+  const xs: number[] = [],
+    zs: number[] = [];
+  const { xyz, alpha } = points;
+  for (let i = 0; i < points.count; i++) {
+    if (alpha[i] <= OPAQUE) continue;
+    const y = (xyz[i * 3 + 1] + o.offset) * s;
+    if (y < lo || y > hi) continue;
+    const x = xyz[i * 3] * s,
+      z = xyz[i * 3 + 2] * s;
+    if (Math.abs(x) > lim || Math.abs(z) > lim) continue;
+    xs.push(x);
+    zs.push(z);
+  }
+  if (xs.length < 500) return null;
+  const n = Math.ceil((2 * lim * Math.SQRT2) / WALL_BIN) + 2,
+    mid = n / 2;
+  const hx = new Float64Array(n),
+    hz = new Float64Array(n);
+  const sharpness = (deg: number) => {
+    const c = Math.cos(deg * DEG),
+      sn = Math.sin(deg * DEG);
+    hx.fill(0);
+    hz.fill(0);
+    // A piece turned by t has its x axis along (cos t, −sin t) and its z axis along (sin t, cos t).
+    for (let i = 0; i < xs.length; i++) {
+      hx[Math.floor((xs[i] * c - zs[i] * sn) / WALL_BIN + mid)]++;
+      hz[Math.floor((xs[i] * sn + zs[i] * c) / WALL_BIN + mid)]++;
+    }
+    let sum = 0;
+    for (let k = 0; k < n; k++) sum += hx[k] * hx[k] + hz[k] * hz[k];
+    return sum;
+  };
+  let best = 0,
+    top = -1,
+    total = 0;
+  for (let d = 0; d < 90; d += 0.5) {
+    const v = sharpness(d);
+    total += v;
+    if (v > top) [top, best] = [v, d];
+  }
+  if (top < 1.25 * (total / 180)) return null;
+  for (let d = best - 0.4; d <= best + 0.4 + 1e-9; d += 0.1) {
+    const v = sharpness(d);
+    if (v > top) [top, best] = [v, d];
+  }
+  return (((best % 90) + 90) % 90) * DEG;
+}
+
 /** An erased box, ready for point tests: its contents are hidden from the scan. */
 export type EraseBox = { cx: number; cz: number; cos: number; sin: number; hx: number; hz: number; top: number; bottom: number };
 /**

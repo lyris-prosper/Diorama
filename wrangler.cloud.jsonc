@@ -7,9 +7,12 @@
   "main": "./build/worker.ts",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
+  // Served at https://diorama.<account subdomain>.workers.dev; no extra preview address per version.
+  "workers_dev": true,
+  "preview_urls": false,
   "d1_databases": [
-    // `wrangler d1 create diorama` prints the id to put here.
-    { "binding": "DB", "database_name": "diorama", "database_id": "00000000-0000-4000-8000-0000000000c1", "migrations_dir": "drizzle" }
+    // Made with `wrangler d1 create diorama` (2026-10-07).
+    { "binding": "DB", "database_name": "diorama", "database_id": "005a1dd8-b239-46f8-b661-7002986cc8b3", "migrations_dir": "drizzle" }
   ],
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "diorama-files" }],
   "vars": {

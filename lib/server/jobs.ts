@@ -1,6 +1,6 @@
 import { bindings, getProject, saveProject, cacheRemote, slimModel } from "./storage";
 import { startWorld, startTripo, pollWorld, pollTripo } from "./providers";
-import { ProviderError, billing } from "./provider-http";
+import { ProviderError, billing, TRIPO_QUALITY } from "./provider-http";
 import { estimate, budgetLimit, BUDGET_USED_SQL, settle } from "./job-budget";
 import type { Project } from "../types";
 import { say, both } from "./say";
@@ -8,6 +8,8 @@ export async function enqueue(p: Project, user: string, kind: string, target: st
   const { db } = bindings();
   const id = `${p.id}-${kind}-${target}`;
   const cost = estimate(kind);
+  // Furniture is made at the high-detail settings; the job records it, for reuse.
+  if (kind === "furniture") payload = { ...payload, quality: TRIPO_QUALITY };
   await db.prepare(`INSERT OR IGNORE INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated)
     SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${BUDGET_USED_SQL} + ? <= ?`)
     .bind(id,p.id,user,kind,target,"queued",JSON.stringify(payload),1,Date.now(),cost,cost,kind,kind,cost,budgetLimit(kind)).run();
@@ -32,6 +34,25 @@ export async function retryJob(id: string, project: string, user: string, confir
     WHERE id=? AND status=? AND attempt=? AND ${BUDGET_USED_SQL} + ? <= ?`)
     .bind(Date.now(),cost,cost,j.id,j.status,j.attempt,j.kind,j.kind,cost,budgetLimit(j.kind)).run();
   if (!r.meta.changes) throw say("任务状态已变更或重新生成将超出本地预算上限。", "The job changed meanwhile, or generating again would exceed the local budget.");
+}
+/**
+ * Makes a finished piece again at the current (high-detail) settings, from the same photo: the job
+ * goes back in the queue as a new attempt (its earlier charge stays on record). The piece keeps
+ * its old model until the new one is ready.
+ */
+export async function regenerateJob(project: string, item: string, user: string) {
+  const { db } = bindings();
+  const id = `${project}-furniture-${item}`;
+  const j = await db.prepare("SELECT id,status,payload,attempt FROM jobs WHERE id=? AND owner=?").bind(id,user).first<{ id: string; status: string; payload: string; attempt: number }>();
+  if (!j) throw say("找不到这件家具的生成记录（复用来的模型不能重新生成）。", "There's no generation record for this piece (a reused model can't be regenerated).");
+  if (!["done","failed"].includes(j.status)) throw say("这件家具正在生成，请等它完成。", "This piece is still being generated. Wait for it to finish.");
+  const payload = { ...JSON.parse(j.payload), quality: TRIPO_QUALITY };
+  const cost = estimate("furniture");
+  const r = await db.prepare(`UPDATE jobs SET status='queued',provider=NULL,attempt=attempt+1,error=NULL,result=NULL,payload=?,
+    updated=?,reserved=?,estimated=?,actual_credits=NULL,billing_details=NULL,settled=0,poll_started=NULL,next_poll=0,poll_failures=0
+    WHERE id=? AND status=? AND attempt=? AND ${BUDGET_USED_SQL} + ? <= ?`)
+    .bind(JSON.stringify(payload),Date.now(),cost,cost,j.id,j.status,j.attempt,"furniture","furniture",cost,budgetLimit("furniture")).run();
+  if (!r.meta.changes) throw say("任务状态已变更，或重新生成将超出本地预算上限。", "The job changed meanwhile, or generating again would exceed the local budget.");
 }
 export async function tick(id: string, user: string) {
   const { db } = bindings();
@@ -66,7 +87,8 @@ export async function tick(id: string, user: string) {
       continue;
     }
     if (j.next_poll > Date.now()) continue;
-    if (Date.now() - (j.poll_started || j.updated) > (j.kind === "world" ? 10 : 5) * 60000) {
+    // High-detail furniture (8K textures, detailed geometry) takes Tripo several minutes.
+    if (Date.now() - (j.poll_started || j.updated) > (j.kind === "world" ? 10 : 15) * 60000) {
       await db.prepare("UPDATE jobs SET status='paused',error=?,result=json_set(COALESCE(result,'{}'),'$.errorEn',?),updated=? WHERE id=? AND status='running'")
         .bind("等待超时：任务编号已保留。可继续查询原任务，不会重新生成或再次提交。","Timed out waiting. The job number is kept: keep checking the original job; nothing is generated or submitted again.",Date.now(),j.id).run();
       continue;
@@ -110,27 +132,34 @@ export async function tick(id: string, user: string) {
       if (j.kind === "furniture") {
         // The piece may have been put away (undone) while it was generating: keep its model anyway.
         const item = p.items.find((i) => i.id === j.target) ?? p.archived?.find((i) => i.id === j.target);
+        const payload = JSON.parse(j.payload);
+        // The PBR model when Tripo made one. A high-detail model gets its own file name, so a
+        // regenerated piece never shows the old file from the browser's cache.
+        const source = out.output?.pbr_model_url ?? out.output?.pbr_model ?? out.output?.model_url;
+        const suffix = payload.quality ? `-${payload.quality}` : "";
         // The room loads a slimmed copy (fewer triangles, WebP textures); the download is kept as it came.
         const model = await slimModel(
-          await cacheRemote(out.output?.model_url, `${p.id}/models/${j.target}.glb`, "glb"),
+          await cacheRemote(source, `${p.id}/models/${j.target}${suffix}.glb`, "glb"),
           item?.dims ? Math.max(item.dims.w, item.dims.d, item.dims.h) : undefined,
         );
         const thumb = out.output?.rendered_image_url
           ? await cacheRemote(
               out.output?.rendered_image_url,
-              `${p.id}/models/${j.target}.png`,
+              `${p.id}/models/${j.target}${suffix}.png`,
             )
           : undefined;
         if (item) {
           item.model = model;
           item.thumbnail = thumb;
-          item.status = item.placeOnReady ? "placed" : "ready";
+          // A regenerated piece stays where it was placed.
+          item.status = item.placeOnReady || item.status === "placed" ? "placed" : "ready";
           delete item.error;
         }
       }
       await saveProject(p,user);
+      // Which outputs the provider sent (names only), to see what a model came with.
       await db.prepare("UPDATE jobs SET status='done',result=?,error=NULL,updated=?,next_poll=0 WHERE id=?")
-        .bind(JSON.stringify({cost:charge.cost,details:charge.details}),Date.now(),j.id).run();
+        .bind(JSON.stringify({cost:charge.cost,details:charge.details,outputs:Object.keys(out.output ?? out.assets ?? {})}),Date.now(),j.id).run();
     } catch (e) {
       const err = e as ProviderError;
       const terminal = !!err.terminal;

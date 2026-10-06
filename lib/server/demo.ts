@@ -1,6 +1,7 @@
 // The sample bedroom (lib/demo-room.ts) on the server: its room files under `presets/`, which no
 // space owns and deleting a space never removes, and reuse of furniture models already generated.
 import { bindings, cacheRemote } from "./storage";
+import { TRIPO_QUALITY } from "./provider-http";
 import { DEMO_ROOM, demoPieceFor, shaOfKey, type DemoPiece } from "../demo-room";
 import type { Project } from "../types";
 
@@ -34,8 +35,9 @@ export function applyDemoRoom(p: Project) {
 export type Reuse = { model: string; thumbnail?: string; piece?: DemoPiece };
 /**
  * A model already made from this furniture photo: the sample bedroom's pieces first, then the
- * person's finished Tripo jobs whose input was the same file (its SHA-256 is in the upload key).
- * Generating again would cost credits for the same result.
+ * person's finished high-detail Tripo jobs whose input was the same file (its SHA-256 is in the
+ * upload key). Generating again would cost credits for the same result; a model from the earlier,
+ * standard settings is not reused, so the photo is made again in high detail.
  */
 export async function reusableModel(user: string, photo: string, print?: string): Promise<Reuse | null> {
   const sha = shaOfKey(photo);
@@ -44,8 +46,8 @@ export async function reusableModel(user: string, photo: string, print?: string)
   if (!sha) return null;
   const { db, bucket } = bindings();
   const jobs = await db
-    .prepare("SELECT project,target FROM jobs WHERE owner=? AND kind='furniture' AND status='done' AND instr(payload, ?) > 0 ORDER BY updated DESC LIMIT 10")
-    .bind(user, sha)
+    .prepare("SELECT project,target FROM jobs WHERE owner=? AND kind='furniture' AND status='done' AND instr(payload, ?) > 0 AND json_extract(payload,'$.quality')=? ORDER BY updated DESC LIMIT 10")
+    .bind(user, sha, TRIPO_QUALITY)
     .all<{ project: string; target: string }>();
   for (const j of jobs.results) {
     const row = await db.prepare("SELECT data FROM projects WHERE id=? AND owner=?").bind(j.project, user).first<{ data: string }>();

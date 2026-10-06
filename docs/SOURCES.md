@@ -9,7 +9,7 @@
 - Tripo v3 单图建模：<https://developers.tripo3d.ai/en/docs/generation-image-to-model/standard>
 - Tripo v3 图片上传：<https://developers.tripo3d.ai/en/docs/files>（JPEG/PNG，20 MB 服务上限；应用限制 10 MB）
 - Tripo v3 账户：<https://developers.tripo3d.ai/en/docs/account>
-- Tripo 费用：<https://developers.tripo3d.ai/en/pricing>（标准贴图图生模型 30 积分；应用按 30 预留，不开 PBR 等附加项）
+- Tripo 费用：<https://developers.tripo3d.ai/en/pricing>、参数：<https://docs.tripo3d.ai/model-generation/image-to-model-v3-0-v3-1.html>（H3.1 图生模型：无贴图 20 积分，`texture_quality` 为 extreme（8K）再加 30，`geometry_quality` 为 detailed 再加 20，PBR 不另收费。应用按 70 预留，结束后以服务商返回的实际扣费为准）
 
 ## 前端与运行库
 

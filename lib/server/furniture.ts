@@ -9,7 +9,7 @@ import { MAX_ITEMS, type Dims, type Item, type Project } from "../types";
 import { say, type Lang } from "./say";
 import { reusableModel } from "./demo";
 
-const KINDS = ["bed", "desk", "cabinet", "chair", "sofa", "other"];
+const KINDS = ["bed", "desk", "cabinet", "chair", "sofa", "pendant", "other"];
 export const MAX_BATCH = 8;
 /** A request body as parsed from JSON: every field is checked before use. */
 type Body = Record<string, unknown>;

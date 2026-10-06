@@ -38,6 +38,8 @@ function load(path){
   return mod.exports;
 }
 const route=load(root+'/app/api/workbench/route.ts');
+// Credits reserved per piece at the high-detail settings.
+const E=load(root+'/lib/credits.ts').TRIPO_CREDITS;
 const catalog=JSON.parse(readFileSync('lib/catalog.json','utf8')).items;
 const json=(data,status=200)=>Response.json(data,{status});
 const USER='local-preview';
@@ -130,7 +132,7 @@ await test('add-furniture refuses a batch beyond the budget or the balance, and 
   const added=r.data.items.filter(i=>i.source==='upload');
   assert.deepEqual([...r.data.added].sort(),added.map(i=>i.id).sort());
   assert.equal(added.length,2);assert.equal(added[0].status,'queued');assert.deepEqual(added[0].dims,{w:30,d:30,h:150});assert.equal(added[0].height,1.5);
-  const js=jobs();assert.equal(js.length,2);assert(js.every(j=>j.kind==='furniture'&&j.reserved===30&&j.status==='queued'));
+  const js=jobs();assert.equal(js.length,2);assert(js.every(j=>j.kind==='furniture'&&j.reserved===E&&j.status==='queued'&&JSON.parse(j.payload).quality==='hd'));
   assert.deepEqual(js.map(j=>j.target).sort(),added.map(i=>i.id).sort());
   assert.equal(paidPosts(),0);
 });
@@ -150,7 +152,7 @@ await test('add-furniture reuses a model already made from the same photo; only 
   handler=balanceHandler(1000);
   const mixed=await post({action:'add-furniture',id:'p',furniture:[bed,...piece(1)],approved:true});
   assert.equal(mixed.status,200,JSON.stringify(mixed.data));assert.equal(mixed.data.added.length,2);
-  assert.equal(jobs().length,1);assert.equal(jobs()[0].reserved,30);
+  assert.equal(jobs().length,1);assert.equal(jobs()[0].reserved,E);
 });
 
 await test('add-furniture is unavailable in the demo room',async()=>{

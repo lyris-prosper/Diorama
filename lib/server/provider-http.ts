@@ -1,3 +1,4 @@
+import { TRIPO_CREDITS, WORLD_CREDITS } from "../credits";
 import { outbound } from "./outbound";
 export type ErrorCategory = "auth" | "balance" | "parameters" | "timeout" | "provider" | "network";
 export class ProviderError extends Error {
@@ -91,9 +92,15 @@ export function billing(kind: string, output: any) {
     details: kind === "world" ? output?.cost?.line_items ?? [] : { credits_consumed: output?.credits_consumed ?? null },
   };
 }
-export const WORLD_ESTIMATE = 230;
-export const TRIPO_ESTIMATE = 30;
+export const WORLD_ESTIMATE = WORLD_CREDITS;
+export const TRIPO_ESTIMATE = TRIPO_CREDITS;
+/**
+ * Tripo's best image-to-model: H3.1 with detailed geometry and extreme (8K) PBR textures (base
+ * colour, metal/roughness, normal). Models made this way carry `quality: TRIPO_QUALITY` in their
+ * job, so only they are reused for a photo seen again.
+ */
 export const TRIPO_SETTINGS = Object.freeze({
-  model: "v3.1-20260211", texture: true, pbr: false, texture_quality: "standard",
-  geometry_quality: "standard", enable_image_autofix: false,
+  model: "v3.1-20260211", texture: true, pbr: true, texture_quality: "extreme",
+  geometry_quality: "detailed", enable_image_autofix: false,
 });
+export const TRIPO_QUALITY = "hd";

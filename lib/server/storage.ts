@@ -62,6 +62,7 @@ export async function tasks(id: string, user: string): Promise<Task[]> {
     error: r.error,
     errorEn: r.result ? JSON.parse(r.result).errorEn : undefined,
     output: r.result ? JSON.parse(r.result) : undefined,
+    quality: r.payload ? JSON.parse(r.payload).quality : undefined,
   }));
 }
 export async function bytes(key: string) {
@@ -98,12 +99,20 @@ export async function slimModel(key: string, largestCm?: number): Promise<string
   try {
     const source = await bucket.get(key);
     if (!source) return key;
-    const res = await fetch(optimizer + (largestCm ? `?size=${Math.round(largestCm)}` : ""), {
-      method: "POST",
-      body: await source.arrayBuffer(),
-      signal: AbortSignal.timeout(200000),
-    });
-    if (!res.ok) return key;
+    const body = await source.arrayBuffer();
+    // Busy or short of memory (a 90 MB, 8K model needs about 1.1 GB for a few seconds): wait and try
+    // again, since the unslimmed original is heavy for the browser.
+    let res: Response | null = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 8000));
+      res = await fetch(optimizer + (largestCm ? `?size=${Math.round(largestCm)}` : ""), {
+        method: "POST",
+        body,
+        signal: AbortSignal.timeout(200000),
+      });
+      if (res.status !== 409 && res.status !== 503) break;
+    }
+    if (!res?.ok) return key;
     const data = await res.arrayBuffer();
     if (data.byteLength < 12 || new DataView(data).getUint32(0, true) !== 0x46546c67) return key;
     const lite = key.replace(/\.glb$/, "") + ".lite.glb";

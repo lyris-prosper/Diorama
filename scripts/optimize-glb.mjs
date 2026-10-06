@@ -1,6 +1,6 @@
 // Shared GLB slimming for the furniture library (scripts/build-catalog.mjs) and for models Tripo
-// generates (build/local-model-plugin.mjs). Tripo exports carry three 4096² textures and up to
-// 1.5 M triangles; the browser needs neither. Geometry is welded, simplified to a triangle budget
+// generates (build/local-model-plugin.mjs). Tripo's high-detail exports carry 8K PBR textures and up
+// to 2 M triangles; the browser, next to the room scan, needs neither. Geometry is welded, simplified to a triangle budget
 // and meshopt-compressed; textures become WebP at a size that suits the piece.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -33,26 +33,29 @@ export const countTriangles = (doc) =>
 /**
  * Slims a document in place: weld, simplify to the triangle budget, WebP textures, meshopt.
  * @param {import("@gltf-transform/core").Document} doc
- * @param {{ maxTriangles: number, texture: number }} options  triangle budget; base colour / normal map size in px
+ * @param {{ maxTriangles: number, texture: number, normal?: number, detail?: number }} options  triangle budget;
+ *   base colour size in px; normal map size (default: the base colour's); metal/roughness and occlusion (default: half)
  */
-export async function slim(doc, { maxTriangles, texture }) {
+export async function slim(doc, { maxTriangles, texture, normal = texture, detail = texture / 2 }) {
   const triangles = countTriangles(doc);
   await doc.transform(
     dedup(),
     prune(),
     weld(),
     ...(triangles > maxTriangles ? [simplify({ simplifier: MeshoptSimplifier, ratio: maxTriangles / triangles, error: 0.0005 })] : []),
-    textureCompress({ encoder: sharp, targetFormat: "webp", slots: /^(baseColor|normal|emissive)/, resize: [texture, texture], quality: 86 }),
-    textureCompress({ encoder: sharp, targetFormat: "webp", slots: /^(metallicRoughness|occlusion)/, resize: [texture / 2, texture / 2], quality: 80 }),
+    textureCompress({ encoder: sharp, targetFormat: "webp", slots: /^(baseColor|emissive)/, resize: [texture, texture], quality: 88 }),
+    textureCompress({ encoder: sharp, targetFormat: "webp", slots: /^normal/, resize: [normal, normal], quality: 86 }),
+    textureCompress({ encoder: sharp, targetFormat: "webp", slots: /^(metallicRoughness|occlusion)/, resize: [detail, detail], quality: 80 }),
     meshopt({ encoder: MeshoptEncoder, level: "medium" }),
   );
   return { before: triangles, after: countTriangles(doc) };
 }
 
 /**
- * A generated model slimmed for the room. Big pieces (a bed, a wardrobe: 1 m or more on any side)
- * keep 2048 px textures and up to 150k triangles; smaller ones 1024 px and 60k. Without a real size
- * the model's own proportions decide: wide and low reads as a bed or a desk.
+ * A generated model slimmed for the room: a 4K copy of the 8K original. The base colour keeps 4096 px,
+ * the normal map 2048, metal/roughness 1024. Big pieces (a bed, a wardrobe: 1 m or more on any side)
+ * keep up to 400k triangles, smaller ones 200k. Without a real size the model's own proportions
+ * decide: wide and low reads as a bed or a desk.
  * @param {Uint8Array} bytes
  * @param {{ largestCm?: number }} [hint]
  */
@@ -63,7 +66,7 @@ export async function optimizeGlb(bytes, { largestCm } = {}) {
   const { min, max } = getBounds(scene);
   const extent = Math.max(max[0] - min[0], max[2] - min[2]), height = max[1] - min[1];
   const large = largestCm ? largestCm >= 100 : height > 0 && extent / height > 1.4;
-  const stats = await slim(doc, { maxTriangles: large ? 150_000 : 60_000, texture: large ? 2048 : 1024 });
+  const stats = await slim(doc, { maxTriangles: large ? 400_000 : 200_000, texture: 4096, normal: 2048, detail: 1024 });
   return { bytes: await io.writeBinary(doc), ...stats };
 }
 

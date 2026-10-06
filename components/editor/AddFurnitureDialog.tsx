@@ -7,9 +7,9 @@ import { backdrop, backdropNote, PHOTO_TIPS, type Backdrop } from "@/lib/photo";
 import type { Dims } from "@/lib/types";
 import DimsFields, { noDims, readDims, type DimsDraft } from "./DimsFields";
 import { useLang, type T } from "@/lib/i18n";
+import { TRIPO_CREDITS as CREDITS } from "@/lib/credits";
 
 export const MAX_BATCH = 8;
-const CREDITS = 30;
 export type NewPiece = { file: File; name: string; kind: string; dims: Dims };
 type Row = { key: string; file: File | null; url: string; name: string; kind: string; dims: DimsDraft; note: Backdrop | null };
 const blank = (): Row => ({ key: crypto.randomUUID(), file: null, url: "", name: "", kind: "other", dims: noDims, note: null });
@@ -262,15 +262,15 @@ export default function AddFurnitureDialog({
             <label className="approve">
               <input type="checkbox" checked={agree} disabled={!!sending || !count} onChange={(e) => setAgree(e.target.checked)} />
               <span>
-                {t("用 Tripo 生成 ", "Generate ")}
+                {t("用 Tripo 高精度生成 ", "Generate ")}
                 <b>{count || 0}</b>
-                {t(" 件 3D 模型，预计消耗 ", count === 1 ? " 3D model with Tripo, about " : " 3D models with Tripo, about ")}
+                {t(" 件 3D 模型（8K 贴图），预计消耗 ", count === 1 ? " high-detail 3D model (8K textures) with Tripo, about " : " high-detail 3D models (8K textures) with Tripo, about ")}
                 <b>
                   {CREDITS} × {count || 0} = {CREDITS * count}
                 </b>
                 {t(
-                  " 积分。每件约 1–3 分钟，失败的那件可以单独重试；之前生成过的照片直接复用，不再扣费。",
-                  " credits. About 1–3 minutes each; a piece that fails can be retried on its own. Photos already made into 3D are reused for free.",
+                  " 积分。每件约 2–5 分钟，失败的那件可以单独重试；之前高精度生成过的照片直接复用，不再扣费。",
+                  " credits. About 2–5 minutes each; a piece that fails can be retried on its own. Photos already made into 3D in high detail are reused for free.",
                 )}
               </span>
             </label>

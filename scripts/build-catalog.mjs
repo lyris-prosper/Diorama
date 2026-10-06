@@ -7,9 +7,10 @@
 // --images rebuilds the card pictures (public/catalog/images/<id>.webp) from the official product
 // photos, numbered like the catalog: 01_….jpg is the first entry, 20_….jpg the last.
 //
-// Source models are full Tripo exports (three 4096² textures, 4–18 MB each). Each one is
-// re-oriented (when the catalog asks), scaled uniformly to the product's real size, centred on the
-// floor, given 1024 px WebP textures and meshopt-compressed geometry. No paid service is called:
+// Source models are full Tripo exports (4K–8K textures, 4–60 MB each). Each one is re-oriented (when
+// the catalog asks), scaled uniformly to the product's real size (or, for a soft piece marked
+// `source.fit: "stretch"`, each axis to its listed size), centred on the floor, given 1024 px WebP
+// textures and meshopt-compressed geometry. No paid service is called:
 // items without a source model are listed with their Tripo estimate and left for the user to decide.
 import { existsSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
@@ -26,7 +27,8 @@ const src = resolve(root, option("--src") ?? process.env.CATALOG_SRC ?? "../20�
 const only = option("--only")?.split(",");
 const catalogPath = join(root, "lib/catalog.json");
 const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
-const TRIPO_ESTIMATE = 30;
+// lib/credits.ts TRIPO_CREDITS: a high-detail Tripo model.
+const TRIPO_ESTIMATE = 70;
 // Tripo models face +X; the app (like glTF) treats +Z as the front.
 const TRIPO_YAW = -90;
 const MAX_TRIANGLES = 40000;
@@ -43,7 +45,7 @@ const rot = (axis, deg) => {
   if (axis === "y") return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1];
   return [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 };
-const scaleMove = (k, t) => [k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, t[0], t[1], t[2], 1];
+const scaleMove = ([kx, ky, kz], t) => [kx, 0, 0, 0, 0, ky, 0, 0, 0, 0, kz, 0, t[0], t[1], t[2], 1];
 const median = (v) => {
   const s = [...v].sort((a, b) => a - b), m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
@@ -66,6 +68,13 @@ function unitScale(item, size) {
   if (known.includes("h") && size[1] > 1e-4) ratios.push(item.dims.h / size[1]);
   if (!ratios.length) throw Error(`${item.id}: 没有可用的已知尺寸`);
   return median(ratios);
+}
+// A soft piece whose photo cannot show its depth (a cushion seen from the front): every axis to its
+// listed size, the longer footprint side along the model's longer horizontal side (metres per unit).
+function stretchScale(item, size) {
+  const [long, short] = item.dims.w >= item.dims.d ? [item.dims.w, item.dims.d] : [item.dims.d, item.dims.w];
+  const wide = size[0] >= size[2];
+  return [(wide ? long : short) / size[0], item.dims.h / size[1], (wide ? short : long) / size[2]].map((v) => v / 100);
 }
 const round = (v, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
 
@@ -121,10 +130,9 @@ for (const item of catalog.items) {
   bake(scene, mul(rot("y", TRIPO_YAW + (item.source.yaw ?? 0)), mul(rot("z", rz), mul(rot("y", ry), rot("x", rx)))));
   let { min, max } = getBounds(scene);
   const size = [0, 1, 2].map((i) => max[i] - min[i]);
-  const cm = unitScale(item, size);
-  const k = cm / 100;
+  const k = item.source.fit === "stretch" ? stretchScale(item, size) : Array(3).fill(unitScale(item, size) / 100);
   // Centre the footprint on the origin and stand the model on y = 0, in metres.
-  bake(scene, scaleMove(k, [-((min[0] + max[0]) / 2) * k, -min[1] * k, -((min[2] + max[2]) / 2) * k]));
+  bake(scene, scaleMove(k, [-((min[0] + max[0]) / 2) * k[0], -min[1] * k[1], -((min[2] + max[2]) / 2) * k[2]]));
   ({ min, max } = getBounds(scene));
   await slim(doc, { maxTriangles: MAX_TRIANGLES, texture: 1024 });
   await io.write(outFile, doc);

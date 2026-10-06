@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import getRawBody from 'raw-body';
 import { availableMB } from './local-vision-plugin.mjs';
-// Generated models are slimmed on this machine before the room loads them: a Tripo export can hold
-// 1.5 M triangles (a 42 MB bed) that the browser neither needs nor raycasts quickly. The work runs
+// Generated models are slimmed on this machine before the room loads them: a high-detail Tripo export
+// holds 2 M triangles and 8K textures (about 90 MB) that the browser neither needs nor raycasts quickly. The work runs
 // in a child process (scripts/optimize-glb.mjs), so its memory leaves with it. Loopback only; the
 // Worker posts the GLB and stores what comes back next to the original.
-const NEEDED_MB = 700; // measured peak for the 42 MB bed: about 430 MB
+const NEEDED_MB = 1100; // measured peaks: 42 MB bed with 2K textures about 430 MB; 90 MB cushion with 8K textures 1.07 GB (5 s)
 export function localModel() {
   let busy = false;
   return {

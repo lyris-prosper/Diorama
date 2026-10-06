@@ -23,6 +23,8 @@ export type Item = {
   source?: "photo" | "upload" | "catalog";
   /** Library entry this piece came from (lib/catalog.json), for its price and shop link. */
   catalogId?: string;
+  /** Hung from the ceiling, or kept on the floor; unset: pendants hang, the rest stand. */
+  mount?: "ceiling" | "floor";
 };
 /** Empty-room base layer: its own metric scale and a world-space shift that aligns it to the room. */
 export type CleanLayer = {
@@ -70,6 +72,8 @@ export type Task = {
   errorEn?: string;
   attempt: number;
   output?: any;
+  /** "hd": made at the high-detail settings; unset: an earlier, standard model. */
+  quality?: string;
 };
 export type Project = {
   id: string;

@@ -699,19 +699,21 @@
       "image": "/catalog/images/dytag-cushion.webp",
       "officialImage": "https://www.ikea.com/se/en/images/products/dytag-cushion-cover-dark-beige__1052104_pe845935_s5.jpg",
       "source": {
-        "file": "brown+cushion+3d+model.glb"
+        "file": "dytag-cushion-hd.glb",
+        "fit": "stretch"
       },
       "known": [
         "w",
+        "d",
         "h"
       ],
       "model": "/catalog/models/dytag-cushion.glb",
       "modelSize": {
-        "w": 50.7,
-        "d": 47.1,
-        "h": 49.3
+        "w": 50,
+        "d": 15,
+        "h": 50
       },
-      "modelHeight": 0.4927
+      "modelHeight": 0.5
     },
     {
       "id": "sortso-rug",

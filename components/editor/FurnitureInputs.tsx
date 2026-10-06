@@ -6,8 +6,9 @@ import { backdrop, backdropNote, PHOTO_TIPS, type Backdrop } from "@/lib/photo";
 import DimsFields, { draftOf, readDims, type DimsDraft } from "./DimsFields";
 import { useLang } from "@/lib/i18n";
 import { pieceName } from "@/lib/furniture-kinds";
+import { assetUrl } from "@/lib/asset-url";
 
-const asset = (k: string) => "/api/assets?key=" + encodeURIComponent(k);
+const asset = (k: string) => assetUrl(k);
 type Saving = "idle" | "saving" | "saved" | "error";
 
 /**

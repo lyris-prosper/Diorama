@@ -40,6 +40,29 @@ npm start
 
 直接打开某个空间：`http://localhost:5173/?space=<空间 id>`，彩排或录屏时可以用。
 
+## 在线演示版（Vercel）
+
+不用安装，打开网址就能体验示例卧室。在线版是同一套页面的静态构建，没有服务器：页面的接口在浏览器里运行（`lib/demo-backend.ts`），空间和照片存在访问者自己浏览器的 IndexedDB 里，房间文件直接从 World Labs 的 CDN 读取。不调用任何付费接口，也不需要密钥。
+
+- **能做**：打开示例卧室（Marble 1.1 房间）；打开“挪动原家具”点床，擦掉原来的床、放回床模型；添加示例吊灯并挂到天花板；家具库全部商品、叠放、“帮我找”、价格和官网链接；保存、改名、删除空间；中英文切换。首页的“看示例卧室”，以及编辑面板和添加家具里的“用示例……照片”按钮，直接用 `public/demo/samples/` 里的照片，不用自己找文件。
+- **不能做**：用其他照片生成房间或家具、导入 Marble 链接、本机识别和背景修复。页面会提示“在线演示版只能体验示例卧室”，完整功能请在本地运行。
+
+部署（`vercel.json` 已写好构建命令和输出目录，Framework Preset 选 **Other**，不用改任何设置）：
+
+- 在 Vercel 网站 **Add New → Project** 导入这个 GitHub 仓库；或者
+- 在项目目录执行 `npx vercel`（登录由你自己完成），确认无误后 `npx vercel --prod`。`.vercelignore` 保证 `.dev.vars`、`.wrangler/` 等本机文件不会被上传。
+
+本地预览在线版：
+
+```bash
+npm run build:demo
+npm run demo:preview
+```
+
+然后打开 <http://localhost:5191>。构建产物在 `dist-demo/`（约 16 MB，含家具库模型、示例床和吊灯）。
+
+注意：在线版是公开网页，家具库的产品图和吊灯示例照片来自品牌官网（见 `docs/SOURCES.md`），公开前请确认使用范围。
+
 ## 主要功能
 
 - **我的空间**：首页列出所有空间，可以继续上次的、打开、重命名或删除。删除时，别的空间还在用的房间文件会保留。
@@ -105,7 +128,7 @@ npm run scan
 npm run lint
 ```
 
-- `npm test`：所有离线测试，网络全部模拟，不会产生任何付费调用。包括 provider、家具、空间（含演示卧室、模型复用和重新生成）、家具库搜索（中英文）、摆放、自动贴合（擦除框、天花板、模型缩放）和双语检查七组。
+- `npm test`：所有离线测试，网络全部模拟，不会产生任何付费调用。包括 provider、家具、空间（含演示卧室、模型复用和重新生成）、家具库搜索（中英文）、摆放、自动贴合（擦除框、天花板、模型缩放）、在线演示版接口和双语检查八组。
 - `npm run scan`：提交前检查，确认 `.dev.vars` 里的密钥没有出现在任何要提交的文件里。
 - `node tests/local-workflow.mjs`：需要工作台已在运行、可用内存约 3 GB，会真实运行识别和修复模型，并新建一个测试空间，测完可以在首页删除。
 - `node tests/recognition-smoke.mjs`：不需要服务，直接用随项目提供的模型识别两张参考图。
@@ -121,6 +144,7 @@ npm run lint
 - `lib/fit-box.ts`：从房间扫描里找出被点中的家具，给出贴合它的擦除框。`lib/fit-model.ts`：生成的模型按填写尺寸缩放的规则。
 - `lib/credits.ts`：每次生成预计花费的积分。
 - `app/api/workbench/route.ts`：本地服务端接口（空间、上传、生成任务、家具库）。
+- `demo/`、`vite.demo.config.ts`、`lib/demo-backend.ts`、`vercel.json`：在线演示版（静态页面、浏览器里的接口、Vercel 设置）。`lib/asset-url.ts` 决定文件从哪里读取（本地服务或在线版的 CDN / 浏览器）。
 - `lib/server/`：任务、预算、服务商调用、存储。
 - `build/local-*-plugin.mjs`：只允许本机访问的辅助服务（本地模型、模型压缩、代理转发）。
 - `lib/catalog.json`：家具库数据，价格与链接来源见 `docs/SOURCES.md`。

@@ -46,6 +46,7 @@ import { currentLang, pick, useDocumentLang, useLang, type T } from "@/lib/i18n"
 import { DEMO_ROOM, demoPieceAt, demoPieceFor, spaceName } from "@/lib/demo-room";
 import { hangsFromCeiling, pieceName } from "@/lib/furniture-kinds";
 import { TRIPO_CREDITS, WORLD_CREDITS } from "@/lib/credits";
+import { assetUrl, isOnlineDemo, samplePhoto } from "@/lib/asset-url";
 import Landing from "./Landing";
 import LangToggle from "./LangToggle";
 import { productPhoto } from "@/lib/photo";
@@ -128,9 +129,8 @@ type EditDraft = {
   /** The point clicked on the piece, for fitting the box again. */
   at?: [number, number, number];
 };
-// Stored keys go through the asset route; library files are public paths already.
-const url = (k?: string) =>
-  !k ? "" : k.startsWith("/") ? k : "/api/assets?key=" + encodeURIComponent(k);
+// Stored keys go through the asset route (or, in the online demo, the browser); library files are public paths already.
+const url = (k?: string) => assetUrl(k);
 // Keeps the user's unsaved layout while taking what generation produced on the server:
 // a finished model, its thumbnail and status.
 function mergeItems(local: Item[], server: Item[]) {
@@ -529,7 +529,16 @@ export default function Workbench() {
       const source = URL.createObjectURL(photo);
       const print = await photoPrint(source).catch(() => null);
       URL.revokeObjectURL(source);
-      const project: Project & { demo?: boolean } = print ? await api({ action: "set-print", id: r.project.id, print }) : r.project;
+      const project: Project & { demo?: boolean } = print
+        ? await api({ action: "set-print", id: r.project.id, print }).catch((e) => {
+            // The online demo knows only the sample bedroom: it removes the space and says so.
+            if (isOnlineDemo()) {
+              setP(null);
+              void loadSpaces();
+            }
+            throw e;
+          })
+        : r.project;
       setP(project);
       setDrawer(project.stage !== "ready");
       if (project.demo) setToast(t("认出了这张照片：已打开它的 Marble 1.1 高清房间，没有花积分。", "Recognised this photo: its Marble 1.1 room is open. No credits spent."));
@@ -906,7 +915,8 @@ export default function Workbench() {
     setFuture([]);
     void loadSpaces().catch(() => undefined);
   }
-  const demo = () => run(async () => { await create("demo"); });
+  // Online, the sample is the Marble bedroom (its photo, as if uploaded); locally, the simple example room.
+  const demo = () => (isOnlineDemo() ? void samplePhoto("bedroom.jpg").then(receive) : run(async () => { await create("demo"); }));
   // A room already generated on the Marble website (often a better model than the draft) is
   // brought in from its public file links, at no credit cost.
   async function importWorld() {
@@ -1312,7 +1322,7 @@ export default function Workbench() {
           ) : (
             <>
               <button className="text-button header-sample" disabled={busy || boot} onClick={demo}>
-                {t("看示例房间", "Sample room")}
+                {isOnlineDemo() ? t("看示例卧室", "Sample bedroom") : t("看示例房间", "Sample room")}
               </button>
               <button className="button primary" disabled={busy || boot} onClick={() => fileRef.current?.click()}>
                 <Upload size={16} />
@@ -1862,6 +1872,12 @@ export default function Workbench() {
                   </>
                 )}
               </button>
+              {isOnlineDemo() && p?.room?.preset === DEMO_ROOM.id && !editDraft.photo && (
+                <button className="text-button sample-photo" onClick={() => void samplePhoto("bed.png").then(choosePhoto)}>
+                  <ImageIcon size={14} />
+                  {t("用示例卧室的床照片", "Use the sample bed photo")}
+                </button>
+              )}
               <input
                 className="hidden"
                 type="file"

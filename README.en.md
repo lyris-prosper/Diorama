@@ -40,6 +40,29 @@ Chrome and Edge are recommended; Safari works too. Safari 17 on macOS used to cr
 
 To open one space directly, e.g. to rehearse or record a demo: `http://localhost:5173/?space=<space id>`.
 
+## Online demo (Vercel)
+
+Nothing to install: open the address and try the sample bedroom. The online demo is a static build of the same page with no server behind it. The page's API runs in the browser (`lib/demo-backend.ts`), spaces and photos stay in the visitor's own browser (IndexedDB), and the room files are read straight from World Labs' CDN. Nothing paid is ever called, and no keys are needed.
+
+- **Works**: the sample bedroom (a Marble 1.1 room); turn on "Move room furniture", click the bed, erase it and put the bed model back; add the sample pendant and hang it from the ceiling; the whole furniture library with stacking, *Find me*, prices and shop links; save, rename and delete spaces; both languages. "See the sample bedroom" on the home page and the "Use the sample … photo" buttons in the edit panel and in Add furniture use the photos in `public/demo/samples/`, so there is nothing to look for.
+- **Doesn't**: rooms or furniture from other photos, Marble link imports, on-device recognition and background repair. The page says the online demo runs the sample bedroom only; run it locally for everything.
+
+To deploy (`vercel.json` already sets the build command and output folder; choose the **Other** framework preset and change nothing):
+
+- On the Vercel website, **Add New → Project** and import this GitHub repository; or
+- run `npx vercel` in the project folder (you sign in yourself), then `npx vercel --prod` when the preview looks right. `.vercelignore` keeps `.dev.vars`, `.wrangler/` and the other local files from being uploaded.
+
+To preview the online demo locally:
+
+```bash
+npm run build:demo
+npm run demo:preview
+```
+
+Then open <http://localhost:5191>. The build goes to `dist-demo/` (about 16 MB, with the library models, the sample bed and the pendant).
+
+Note: the online demo is public. The library's product pictures and the sample pendant photo come from brand websites (see `docs/SOURCES.md`); check you may show them before publishing.
+
 ## Features
 
 - **Spaces**: the home page lists every space; continue the last one, open, rename or delete. Room files another space still uses are kept when a space is deleted.
@@ -105,7 +128,7 @@ npm run scan
 npm run lint
 ```
 
-- `npm test`: every offline test, with all network calls mocked, so nothing paid can be called. Seven groups: providers, furniture, spaces (sample bedroom, model reuse, regeneration), library search (Chinese and English), placement, fitting (erase box, ceiling, model size) and the two-language check.
+- `npm test`: every offline test, with all network calls mocked, so nothing paid can be called. Eight groups: providers, furniture, spaces (sample bedroom, model reuse, regeneration), library search (Chinese and English), placement, fitting (erase box, ceiling, model size), the online demo's API and the two-language check.
 - `npm run scan`: run before committing; checks that no key from `.dev.vars` appears in any committed file.
 - `node tests/local-workflow.mjs`: needs the app running and about 3 GB of free memory; runs the real recognition and repair models in a new test space (delete it afterwards on the home page).
 - `node tests/recognition-smoke.mjs`: runs the shipped recognition models on two reference pictures, no server needed.
@@ -121,6 +144,7 @@ npm run lint
 - `lib/fit-box.ts`: finds the clicked piece in the room scan and fits the erase box to it. `lib/fit-model.ts`: how a generated model is sized to the typed dimensions.
 - `lib/credits.ts`: estimated credits per generation.
 - `app/api/workbench/route.ts`: the local server API (spaces, uploads, generation jobs, library).
+- `demo/`, `vite.demo.config.ts`, `lib/demo-backend.ts`, `vercel.json`: the online demo (static page, the API in the browser, Vercel settings). `lib/asset-url.ts` decides where files are read from (the local server, or the CDN and the browser online).
 - `lib/server/`: jobs, budget, provider calls, storage.
 - `build/local-*-plugin.mjs`: helper services reachable only from this Mac (local models, model compression, proxy relay).
 - `lib/catalog.json`: library data; sources of prices and links in `docs/SOURCES.md`.

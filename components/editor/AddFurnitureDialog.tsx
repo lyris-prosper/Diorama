@@ -7,6 +7,7 @@ import { backdrop, backdropNote, PHOTO_TIPS, type Backdrop } from "@/lib/photo";
 import type { Dims } from "@/lib/types";
 import DimsFields, { draftOf, noDims, readDims, type DimsDraft } from "./DimsFields";
 import { demoPieceFor } from "@/lib/demo-room";
+import { isOnlineDemo, samplePhoto } from "@/lib/asset-url";
 import { useLang, type T } from "@/lib/i18n";
 import { TRIPO_CREDITS as CREDITS } from "@/lib/credits";
 
@@ -260,6 +261,12 @@ export default function AddFurnitureDialog({
               </article>
             );
           })}
+          {isOnlineDemo() && !rows.some((r) => r.reuse) && (
+            <button className="text-button sample-photo" disabled={!!sending} onClick={() => void samplePhoto("pendant.png").then((f) => attach([f]))}>
+              <ImagePlus size={14} />
+              {t("用示例吊灯照片（在线演示只认得示例照片）", "Use the sample pendant photo (the online demo knows only the sample photos)")}
+            </button>
+          )}
           {rows.length < MAX_BATCH && (
             <button className="add-more" disabled={!!sending} onClick={() => setRows((rs) => [...rs, blank()])}>
               <Plus size={15} />

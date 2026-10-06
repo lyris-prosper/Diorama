@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The online demo's build output (npm run build:demo) and the git-excluded demo video sources.
+    "dist-demo/**",
+    "demo-video/**",
   ]),
   {
     rules: {

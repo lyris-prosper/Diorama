@@ -12,8 +12,8 @@ import { buildCeiling, buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPie
 import { fitBox, type FittedBox } from "@/lib/fit-box";
 import { fitScale } from "@/lib/fit-model";
 import { hangsFromCeiling } from "@/lib/furniture-kinds";
-const asset = (key: string) =>
-  key.startsWith("/") ? key : "/api/assets?key=" + encodeURIComponent(key);
+import { assetUrl } from "@/lib/asset-url";
+const asset = (key: string) => assetUrl(key);
 // Library models are meshopt-compressed; generated ones load the same way.
 const gltfLoader = () => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 function box(

@@ -10,9 +10,12 @@
     "dev": "node scripts/start-local.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs && node tests/fit.mjs && node tests/i18n.mjs",
+    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs && node tests/fit.mjs && node tests/demo-backend.mjs && node tests/i18n.mjs",
     "scan": "node scripts/security-scan.mjs",
     "catalog": "node scripts/build-catalog.mjs",
+    "build:demo": "vite build --config vite.demo.config.ts",
+    "demo:dev": "vite --config vite.demo.config.ts",
+    "demo:preview": "vite preview --config vite.demo.config.ts",
     "setup:local": "node scripts/setup-local-models.mjs",
     "db:local": "wrangler d1 migrations apply DB --local --config wrangler.local.json --persist-to .wrangler/state"
   },

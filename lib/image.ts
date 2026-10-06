@@ -1,5 +1,6 @@
 import { currentLang, pick } from "./i18n";
 import type { Candidate } from "./types";
+import { assetUrl } from "./asset-url";
 export function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const i = new Image();
@@ -17,7 +18,7 @@ export function canvas(w: number, h: number) {
 export function blob(c: HTMLCanvasElement) {
   return new Promise<Blob>((r) => c.toBlob((b) => r(b!), "image/png"));
 }
-const url = (key: string) => "/api/assets?key=" + encodeURIComponent(key);
+const url = (key: string) => assetUrl(key);
 export async function prepareImages(original: string, selected: Candidate[]) {
   const img = await loadImage(url(original));
   const w = img.width,

@@ -66,6 +66,16 @@ Safari 17（macOS 14.5，Apple M3 上实测）的 JavaScriptCore 在两个 Web W
 - **文件**：4 个 `.spz` 放在 R2 的 `presets/bedroom/`，不属于任何空间。`ensureDemoFiles()` 先从本机原有的键复制，没有就从 Marble 公开 CDN 下载（免费）；启动脚本会在服务就绪后调用 `prepare-demo` 提前准备。资产接口对 `presets/` 放行，删除空间永远不碰 `presets/`。
 - **床**：已生成的床模型和缩略图在 `public/demo/`，静态提供。点在床的擦除框范围内时，编辑面板预填床的类别、尺寸和擦除框；上传的床照片 SHA-256 相同（或指纹 ≤ 6）时，`edit-furniture` 直接放回这个模型（按原来的摆位和朝向），不建任务、不预留积分。其他照片如果以前用 Tripo 生成过，也会从 `jobs` 记录里找到原模型复用。
 
+## 在线演示版（`demo/`、`lib/demo-backend.ts`）
+
+部署到 Vercel 的是同一套页面的静态构建（`vite.demo.config.ts`，输出 `dist-demo/`），没有服务器。
+
+- **接口**：`demo/main.tsx` 先装上 `installDemoBackend()`，它接管页面对同源 `/api/*` 的 `fetch`：`/api/workbench` 由 `createDemoServer` 在浏览器里回答，规则从服务端搬过来（保存校验、演示卧室、床和吊灯复用、家具库摆放、擦除框）；凡是要付费或要本机服务的操作（生成、导入、识别、修复）一律返回“在线演示版只能体验示例卧室”。其他 `/api/*` 返回 404。
+- **数据**：空间和上传的照片存在访问者浏览器的 IndexedDB（`diorama-demo`），只属于这个浏览器。
+- **文件地址**：页面里所有文件地址都经 `lib/asset-url.ts` 的 `assetUrl()`。本地版是 `/api/assets?key=…`；在线版里 `presets/` 的房间文件指向 Marble 公开 CDN（允许跨域），上传的照片用 blob 地址，`/demo/`、`/catalog/` 静态文件不变。
+- **页面差异**：`window.__DIORAMA_ONLINE__` 为真时（`isOnlineDemo()`），首页按钮换成“看示例卧室”，编辑面板和添加家具里多出“用示例……照片”按钮（读 `public/demo/samples/`），其余界面与本地版相同。
+- **构建**：只复制 `public/` 里的 `catalog/`、`demo/` 和图标，识别模型 `public/vision/`（81 MB）不进构建；`next/dynamic` 换成 `demo/next-dynamic.tsx`（`React.lazy`）。
+
 ## 中英文（`lib/i18n.ts`）
 
 - 页面文字都写成 `t("中文", "English")`，表格类文字写成 `{ zh, en }` 或 `name / nameEn`。语言存在浏览器 localStorage，第一次访问按浏览器语言；服务端先渲染中文，水合后再切换（`useSyncExternalStore`），不会出现水合不一致。

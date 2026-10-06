@@ -37,6 +37,8 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 /dist/
+# The online demo build (npm run build:demo).
+/dist-demo/
 /.wrangler/
 # Output of tests/local-workflow.mjs and tests/recognition-smoke.mjs.
 /work/

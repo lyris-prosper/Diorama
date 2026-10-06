@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ArrowRight, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { ContinueCard, type SpaceSummary } from "./SpacesDialog";
+import { isOnlineDemo } from "@/lib/asset-url";
 
 const Maquette = dynamic(() => import("./Maquette"), { ssr: false, loading: () => <div className="maquette" /> });
 
@@ -27,6 +28,7 @@ export default function Landing({
   onDropFile: (file: File) => void;
 }) {
   const { lang, t } = useLang();
+  const online = isOnlineDemo();
   const [over, setOver] = useState(false);
   const steps =
     lang === "en"
@@ -89,10 +91,14 @@ export default function Landing({
             {t("上传房间照片", "Upload a room photo")}
           </button>
           <button className="text-button" disabled={busy} onClick={onDemo}>
-            {t("先看示例房间", "See a sample room")} <ArrowRight size={15} />
+            {online ? t("看示例卧室", "See the sample bedroom") : t("先看示例房间", "See a sample room")} <ArrowRight size={15} />
           </button>
         </div>
-        <p className="fine-print">{t("JPG / PNG / WebP，也可以直接把照片拖到页面上。", "Or drop a photo anywhere.")}</p>
+        <p className="fine-print">
+          {online
+            ? t("在线演示：用示例卧室体验挪动、换家具和吊灯；用你自己的房间照片生成 3D，需要在本地运行完整版。", "Online demo: the sample bedroom shows it all. A 3D room from your own photo needs the full app running locally.")
+            : t("JPG / PNG / WebP，也可以直接把照片拖到页面上。", "Or drop a photo anywhere.")}
+        </p>
         {!!spaces?.length && (
           <div className="my-spaces">
             <ContinueCard space={spaces[0]} onOpen={() => onOpenSpace(spaces[0].id)} />

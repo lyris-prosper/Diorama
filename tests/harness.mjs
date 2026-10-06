@@ -9,7 +9,7 @@ import ts from 'typescript';
 
 export function harness(){
   const root=process.cwd();
-  const h={sql:null,handler:null,calls:[],objects:new Map(),env:{WORLDLABS_API_KEY:'test-world-secret',TRIPO_API_KEY:'test-tripo-secret'}};
+  const h={sql:null,handler:null,calls:[],objects:new Map(),streamed:0,env:{WORLDLABS_API_KEY:'test-world-secret',TRIPO_API_KEY:'test-tripo-secret'}};
   const statement=(query,args=[])=>({
     bind:(...values)=>statement(query,values),
     first:async()=>h.sql.prepare(query).get(...args)??null,
@@ -18,9 +18,10 @@ export function harness(){
   });
   h.env.DB={prepare:statement,async batch(list){h.sql.exec('BEGIN');try{const r=[];for(const s of list)r.push(await s.run());h.sql.exec('COMMIT');return r}catch(e){h.sql.exec('ROLLBACK');throw e}}};
   h.env.BUCKET={
-    async get(key){const o=h.objects.get(key);return o?{arrayBuffer:async()=>o.bytes.buffer.slice(o.bytes.byteOffset,o.bytes.byteOffset+o.bytes.byteLength),httpMetadata:{contentType:o.type}}:null},
+    async get(key,options){const o=h.objects.get(key);if(!o)return null;const r=options?.range,b=r?o.bytes.subarray(r.offset??0,(r.offset??0)+(r.length??o.bytes.length)):o.bytes;return {size:o.bytes.length,arrayBuffer:async()=>b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),httpMetadata:{contentType:o.type}}},
     async head(key){const o=h.objects.get(key);return o?{httpMetadata:{contentType:o.type}}:null},
-    async put(key,bytes,options){h.objects.set(key,{bytes:Buffer.from(bytes),type:options.httpMetadata.contentType})},
+    // Streams are read here as R2 would (a FixedLengthStream from cacheRemote); `streamed` counts them.
+    async put(key,bytes,options){if(bytes&&typeof bytes.getReader==='function'){h.streamed++;const parts=[];for await(const c of bytes)parts.push(Buffer.from(c));bytes=Buffer.concat(parts)}h.objects.set(key,{bytes:Buffer.from(bytes),type:options.httpMetadata.contentType})},
     // Pages of two, so callers have to follow the cursor.
     async list({prefix='',cursor}={}){const keys=[...h.objects.keys()].filter(k=>k.startsWith(prefix)).sort(),start=Number(cursor??0),page=keys.slice(start,start+2);return {objects:page.map(key=>({key})),truncated:start+page.length<keys.length,cursor:String(start+page.length)}},
     async delete(keys){for(const k of [keys].flat())h.objects.delete(k)},
@@ -36,7 +37,9 @@ export function harness(){
     const mod={exports:{}};cache.set(path,mod);
     if(path.endsWith('.json')){mod.exports=JSON.parse(readFileSync(path,'utf8'));return mod.exports;}
     const code=ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,esModuleInterop:true,resolveJsonModule:true}}).outputText;
-    const sandbox={Buffer,Blob,FormData,Headers,Response,Request,AbortSignal,URL,DOMException,crypto,console,structuredClone,process:{env:{NODE_ENV:'development'}},setTimeout:(f)=>queueMicrotask(f),
+    const sandbox={Buffer,Blob,FormData,Headers,Response,Request,AbortSignal,URL,DOMException,crypto,console,structuredClone,TextEncoder,process:{env:{NODE_ENV:'development'}},setTimeout:(f)=>queueMicrotask(f),
+      // The Workers stream that gives R2 a body of known length.
+      FixedLengthStream:class{constructor(n){const t=new TransformStream();this.readable=t.readable;this.writable=t.writable;this.length=n}},
       fetch:async(url,init={})=>{h.calls.push({url,init});if(!h.handler)throw Error('Network disabled');return h.handler(url,init)}};
     const fn=vm.runInNewContext(`(function(require,module,exports){${code}\n})`,sandbox,{filename:path});
     fn(name=>name==='cloudflare:workers'?{env:h.env}:load(locate(path,name)),mod,mod.exports);
@@ -45,9 +48,9 @@ export function harness(){
   /** Empty database with the app's migrations, no files, no network. */
   h.reset=()=>{
     h.sql?.close();h.sql=new DatabaseSync(':memory:');
-    for(const f of ['0000_magical_white_queen.sql','0001_provider_accounting.sql'])h.sql.exec(readFileSync('drizzle/'+f,'utf8'));
-    h.calls=[];h.handler=null;h.objects=new Map();
-    for(const k of ['TRIPO_CREDIT_LIMIT','WORLDLABS_CREDIT_LIMIT','LOCAL_OPTIMIZER'])delete h.env[k];
+    for(const f of ['0000_magical_white_queen.sql','0001_provider_accounting.sql','0002_public_quota.sql'])h.sql.exec(readFileSync('drizzle/'+f,'utf8'));
+    h.calls=[];h.handler=null;h.objects=new Map();h.streamed=0;
+    for(const k of ['TRIPO_CREDIT_LIMIT','WORLDLABS_CREDIT_LIMIT','LOCAL_OPTIMIZER','DIORAMA_PUBLIC','DAILY_ROOMS','DAILY_PIECES','DAILY_UPLOADS'])delete h.env[k];
   };
   h.insert=(project,owner='local-preview',updated=Date.now())=>h.sql.prepare('INSERT INTO projects(id,owner,data,updated,revision) VALUES(?,?,?,?,0)').run(project.id,owner,JSON.stringify(project),updated);
   h.file=(key,type='image/png',bytes=Buffer.from([137,80,78,71]))=>h.objects.set(key,{bytes,type});

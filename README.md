@@ -40,6 +40,40 @@ npm start
 
 直接打开某个空间：`http://localhost:5173/?space=<空间 id>`，彩排或录屏时可以用。
 
+## 公开网站（Cloudflare，访客真实生成）
+
+别人打开链接就能用：上传自己的房间照片生成 3D 房间、生成家具、保存空间。和本机版是同一套代码，`DIORAMA_PUBLIC=1` 时进入公开模式（`lib/server/site.ts`）：
+
+- **访客**：不用注册。每位访客有一个随机编号，存在浏览器 Cookie 里，只能看到自己的空间和文件。
+- **免费额度**：每人每天 1 个房间、4 件家具、60 次上传，按 Cookie 或网络地址计数（地址只存哈希）。全站最多花 World Labs 2300、Tripo 1400 积分，用完后生成自动关闭，示例卧室和家具库照常可用。数字都在 `wrangler.cloud.jsonc` 的 `vars` 里，改完重新部署即可。
+- **和本机版的区别**：
+  - 家具用 Tripo 的网页档参数（细致贴图、最多 15 万三角面、meshopt 压缩），因为云端没有本机的模型压缩器；
+  - 不提供高精度重新生成；
+  - 自动识别和背景修复只在本机版有；
+  - 服务状态只显示“可用”，不显示账户余额。
+
+第一次部署：
+
+1. 在 Cloudflare 开通 Workers Paid（每月 5 美元；免费版每次请求只有 10 ms CPU，不够处理照片），并绑定付款方式（R2 需要）。
+2. 登录：`npx wrangler login`。
+3. 建数据库和存储桶，把输出的 `database_id` 填进 `wrangler.cloud.jsonc`：
+
+   ```bash
+   npx wrangler d1 create diorama
+   npx wrangler r2 bucket create diorama-files
+   ```
+
+4. 写入密钥（自己粘贴，不会进入代码或构建产物）：
+
+   ```bash
+   npx wrangler secret put WORLDLABS_API_KEY --config wrangler.cloud.jsonc
+   npx wrangler secret put TRIPO_API_KEY --config wrangler.cloud.jsonc
+   ```
+
+5. 部署（构建 → 更新线上数据库 → 发布）：`npm run deploy:cloud`。网址是 `https://diorama.<你的子域>.workers.dev`，不需要买域名。
+
+本地先试生产构建：`npm run preview:cloud`，打开 <http://localhost:5192>。它在本机的 Workers 运行时里跑，数据存在 `.wrangler/cloud-preview`，不碰本机版的数据；构建时会删掉 Cloudflare 插件复制过来的 `.dev.vars`，所以预览里不会真的花积分。
+
 ## 在线演示版（Vercel）
 
 不用安装，打开网址就能体验示例卧室。在线版是同一套页面的静态构建，没有服务器：页面的接口在浏览器里运行（`lib/demo-backend.ts`），空间和照片存在访问者自己浏览器的 IndexedDB 里，房间文件直接从 World Labs 的 CDN 读取。不调用任何付费接口，也不需要密钥。
@@ -128,7 +162,7 @@ npm run scan
 npm run lint
 ```
 
-- `npm test`：所有离线测试，网络全部模拟，不会产生任何付费调用。包括 provider、家具、空间（含演示卧室、模型复用和重新生成）、家具库搜索（中英文）、摆放、自动贴合（擦除框、天花板、模型缩放）、在线演示版接口和双语检查八组。
+- `npm test`：所有离线测试，网络全部模拟，不会产生任何付费调用。包括 provider、家具、空间（含演示卧室、模型复用和重新生成）、家具库搜索（中英文）、摆放、自动贴合（擦除框、天花板、模型缩放）、在线演示版接口、公开网站（访客隔离、额度、上限、流式下载）和双语检查九组。
 - `npm run scan`：提交前检查，确认 `.dev.vars` 里的密钥没有出现在任何要提交的文件里。
 - `node tests/local-workflow.mjs`：需要工作台已在运行、可用内存约 3 GB，会真实运行识别和修复模型，并新建一个测试空间，测完可以在首页删除。
 - `node tests/recognition-smoke.mjs`：不需要服务，直接用随项目提供的模型识别两张参考图。
@@ -144,6 +178,7 @@ npm run lint
 - `lib/fit-box.ts`：从房间扫描里找出被点中的家具，给出贴合它的擦除框。`lib/fit-model.ts`：生成的模型按填写尺寸缩放的规则。
 - `lib/credits.ts`：每次生成预计花费的积分。
 - `app/api/workbench/route.ts`：本地服务端接口（空间、上传、生成任务、家具库）。
+- `lib/server/site.ts`、`build/worker.ts`、`wrangler.cloud.jsonc`：公开网站（访客编号、每日额度、全站上限、云端配置）。
 - `demo/`、`vite.demo.config.ts`、`lib/demo-backend.ts`、`vercel.json`：在线演示版（静态页面、浏览器里的接口、Vercel 设置）。`lib/asset-url.ts` 决定文件从哪里读取（本地服务或在线版的 CDN / 浏览器）。
 - `lib/server/`：任务、预算、服务商调用、存储。
 - `build/local-*-plugin.mjs`：只允许本机访问的辅助服务（本地模型、模型压缩、代理转发）。

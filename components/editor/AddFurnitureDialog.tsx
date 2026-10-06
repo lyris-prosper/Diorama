@@ -36,12 +36,18 @@ export default function AddFurnitureDialog({
   open,
   onOpenChange,
   ready,
+  free = null,
+  samples = false,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Why generation cannot start (no Tripo key, demo room…), or null. */
   ready: string | null;
+  /** The public website: pieces this visitor can still make free today (null in the Mac version). */
+  free?: number | null;
+  /** Offer the sample pendant photo (online). */
+  samples?: boolean;
   onSubmit: (pieces: NewPiece[], progress: (message: string) => void) => Promise<void>;
 }) {
   const { lang, t } = useLang();
@@ -261,7 +267,7 @@ export default function AddFurnitureDialog({
               </article>
             );
           })}
-          {isOnlineDemo() && !rows.some((r) => r.reuse) && (
+          {(samples || isOnlineDemo()) && !rows.some((r) => r.reuse) && (
             <button className="text-button sample-photo" disabled={!!sending} onClick={() => void samplePhoto("pendant.png").then((f) => attach([f]))}>
               <ImagePlus size={14} />
               {t("用示例吊灯照片（在线演示只认得示例照片）", "Use the sample pendant photo (the online demo knows only the sample photos)")}
@@ -295,9 +301,18 @@ export default function AddFurnitureDialog({
             <p className="notice">{t("这些照片都已经生成过 3D 模型，直接放进家具栏，不消耗积分。", "These photos were all made into 3D before: they go straight to the shelf, no credits.")}</p>
           ) : ready ? (
             <p className="notice">{ready}</p>
+          ) : free !== null && paid > free ? (
+            <p className="notice">{t(`今天只能再免费生成 ${free} 件，请先去掉几张照片。`, `Only ${free} more free ${free === 1 ? "piece" : "pieces"} today: remove a few photos first.`)}</p>
           ) : (
             <label className="approve">
               <input type="checkbox" checked={agree} disabled={!!sending || !paid} onChange={(e) => setAgree(e.target.checked)} />
+              {free !== null ? (
+                <span>
+                  {t("用 Tripo 生成 ", "Generate ")}
+                  <b>{paid || 0}</b>
+                  {t(` 件 3D 模型：免费，今天还能生成 ${free} 件。每件约 2–5 分钟。`, `${paid === 1 ? " 3D model" : " 3D models"} with Tripo: free, ${free} left today. About 2–5 minutes each.`)}
+                </span>
+              ) : (
               <span>
                 {t("用 Tripo 高精度生成 ", "Generate ")}
                 <b>{paid || 0}</b>
@@ -310,6 +325,7 @@ export default function AddFurnitureDialog({
                   " credits. About 2–5 minutes each; a piece that fails can be retried on its own. Photos already made into 3D in high detail are reused for free.",
                 )}
               </span>
+              )}
             </label>
           )}
           {error && <p className="add-error" role="alert">{error}</p>}
@@ -317,7 +333,7 @@ export default function AddFurnitureDialog({
             <button className="text-button" disabled={!!sending} onClick={close}>
               {t("取消", "Cancel")}
             </button>
-            <button className="button primary" disabled={!!sending || !count || !!blocked || (paid > 0 && (!!ready || !agree))} onClick={() => void submit()}>
+            <button className="button primary" disabled={!!sending || !count || !!blocked || (paid > 0 && (!!ready || !agree || (free !== null && paid > free)))} onClick={() => void submit()}>
               {sending ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}
               {sending ||
                 (blocked

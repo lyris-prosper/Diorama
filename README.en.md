@@ -40,6 +40,40 @@ Chrome and Edge are recommended; Safari works too. Safari 17 on macOS used to cr
 
 To open one space directly, e.g. to rehearse or record a demo: `http://localhost:5173/?space=<space id>`.
 
+## Public website (Cloudflare, real generation)
+
+Anyone with the link can use it: upload their own room photo, generate the 3D room and furniture, and keep their spaces. It is the same code as the Mac version; `DIORAMA_PUBLIC=1` switches on the public mode (`lib/server/site.ts`):
+
+- **Visitors**: no sign-up. Each visitor gets a random id in a browser cookie and sees only their own spaces and files.
+- **Free allowance**: one room, four pieces and 60 uploads per visitor a day, counted by cookie or network address (only a hash of the address is kept). The whole site spends at most 2300 World Labs and 1400 Tripo credits; after that generation switches off, while the sample bedroom and the library keep working. The numbers are in the `vars` of `wrangler.cloud.jsonc`; change them and deploy again.
+- **Differences from the Mac version**:
+  - furniture uses Tripo's web settings (detailed textures, at most 150k triangles, meshopt compression), since there is no local model optimizer in the cloud;
+  - no high-detail regeneration;
+  - automatic recognition and background repair are in the Mac version only;
+  - the service status shows only "available", never the account balances.
+
+First deployment:
+
+1. In Cloudflare, turn on Workers Paid ($5 a month; the free plan allows 10 ms of CPU per request, too little for photos) and add a payment method (R2 needs one).
+2. Sign in: `npx wrangler login`.
+3. Create the database and the bucket, and put the printed `database_id` into `wrangler.cloud.jsonc`:
+
+   ```bash
+   npx wrangler d1 create diorama
+   npx wrangler r2 bucket create diorama-files
+   ```
+
+4. Set the keys (you paste them; they never go into the code or the build):
+
+   ```bash
+   npx wrangler secret put WORLDLABS_API_KEY --config wrangler.cloud.jsonc
+   npx wrangler secret put TRIPO_API_KEY --config wrangler.cloud.jsonc
+   ```
+
+5. Deploy (build → update the online database → publish): `npm run deploy:cloud`. The address is `https://diorama.<your-subdomain>.workers.dev`; no domain to buy.
+
+To try the production build first: `npm run preview:cloud`, then open <http://localhost:5192>. It runs in the Workers runtime on this Mac with its data in `.wrangler/cloud-preview`, apart from the Mac version's; the build removes the `.dev.vars` copy the Cloudflare plugin makes, so a preview never spends credits.
+
 ## Online demo (Vercel)
 
 Nothing to install: open the address and try the sample bedroom. The online demo is a static build of the same page with no server behind it. The page's API runs in the browser (`lib/demo-backend.ts`), spaces and photos stay in the visitor's own browser (IndexedDB), and the room files are read straight from World Labs' CDN. Nothing paid is ever called, and no keys are needed.
@@ -128,7 +162,7 @@ npm run scan
 npm run lint
 ```
 
-- `npm test`: every offline test, with all network calls mocked, so nothing paid can be called. Eight groups: providers, furniture, spaces (sample bedroom, model reuse, regeneration), library search (Chinese and English), placement, fitting (erase box, ceiling, model size), the online demo's API and the two-language check.
+- `npm test`: every offline test, with all network calls mocked, so nothing paid can be called. Nine groups: providers, furniture, spaces (sample bedroom, model reuse, regeneration), library search (Chinese and English), placement, fitting (erase box, ceiling, model size), the online demo's API, the public website (visitors apart, allowance, caps, streamed downloads) and the two-language check.
 - `npm run scan`: run before committing; checks that no key from `.dev.vars` appears in any committed file.
 - `node tests/local-workflow.mjs`: needs the app running and about 3 GB of free memory; runs the real recognition and repair models in a new test space (delete it afterwards on the home page).
 - `node tests/recognition-smoke.mjs`: runs the shipped recognition models on two reference pictures, no server needed.
@@ -144,6 +178,7 @@ npm run lint
 - `lib/fit-box.ts`: finds the clicked piece in the room scan and fits the erase box to it. `lib/fit-model.ts`: how a generated model is sized to the typed dimensions.
 - `lib/credits.ts`: estimated credits per generation.
 - `app/api/workbench/route.ts`: the local server API (spaces, uploads, generation jobs, library).
+- `lib/server/site.ts`, `build/worker.ts`, `wrangler.cloud.jsonc`: the public website (visitor ids, daily allowance, site caps, cloud settings).
 - `demo/`, `vite.demo.config.ts`, `lib/demo-backend.ts`, `vercel.json`: the online demo (static page, the API in the browser, Vercel settings). `lib/asset-url.ts` decides where files are read from (the local server, or the CDN and the browser online).
 - `lib/server/`: jobs, budget, provider calls, storage.
 - `build/local-*-plugin.mjs`: helper services reachable only from this Mac (local models, model compression, proxy relay).

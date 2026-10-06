@@ -1,5 +1,5 @@
 import { bindings, bytes } from "./storage";
-import { ProviderError, providerJSON as json, safeText, creditNumber, TRIPO_SETTINGS } from "./provider-http";
+import { ProviderError, providerJSON as json, safeText, creditNumber, tripoSettings } from "./provider-http";
 import { roomCategories as categories } from "../furniture-kinds";
 import { say } from "./say";
 export { categories };
@@ -105,7 +105,7 @@ export async function startTripo(image: string) {
     throw new ProviderError("Tripo：上传结果缺少图片编号，尚未提交付费生成。", { en: "Tripo: the upload returned no image token. Nothing paid was submitted.", category: "provider" });
   const j = await json(T + "/generation/image-to-model", {
     method: "POST", headers: { Authorization: `Bearer ${key("TRIPO_API_KEY")}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ input: f.data.file_token, ...TRIPO_SETTINGS }),
+    body: JSON.stringify({ input: f.data.file_token, ...tripoSettings() }),
   }, true);
   return requiredId(j.data?.task_id);
 }

@@ -1,7 +1,8 @@
-import { bindings, owner } from "@/lib/server/storage";
+import { bindings } from "@/lib/server/storage";
+import { owner } from "@/lib/server/site";
 export async function GET(req: Request) {
   try {
-    const user = owner();
+    const user = owner(req);
     const query = new URL(req.url).searchParams;
     const key = query.get("key") || "";
     const download = query.get("download");

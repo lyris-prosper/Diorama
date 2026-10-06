@@ -1,4 +1,5 @@
-import { bindings, owner, getProject, saveProject, cacheRemote, slimModel } from "@/lib/server/storage";
+import { bindings, getProject, saveProject, cacheRemote, slimModel } from "@/lib/server/storage";
+import { owner, isPublic, clientOf, allowanceLeft, daily, usedUp, MAX_SPACES, type Who } from "@/lib/server/site";
 import { balances, parseIntent, readWorld, parseMarbleSource } from "@/lib/server/providers";
 import { enqueue, tick, retryJob, regenerateJob } from "@/lib/server/jobs";
 import { WORLD_ESTIMATE, TRIPO_ESTIMATE } from "@/lib/server/provider-http";
@@ -27,14 +28,31 @@ async function downloadMarble(projectId: string, source: string) {
   const collider = colliderUrl ? await cacheRemote(colliderUrl, `${projectId}/room/import-${stamp}-collider.glb`, "glb").catch(() => undefined) : undefined;
   return { lightKey, fullKey, collider, s: world?.assets?.splats?.semantics_metadata };
 }
+/** Whether the site's overall credit caps (public website) leave room for one more room / piece. */
+async function siteOpen() {
+  const room = async (kind: string, need: number) => {
+    const s = await budgetSummary(kind);
+    return s.limit - s.reserved - s.actual - s.unconfirmed >= need;
+  };
+  return { world: await room("world", WORLD_ESTIMATE), furniture: await room("furniture", TRIPO_ESTIMATE) };
+}
 export async function GET(req: Request) {
   try {
-    const user = owner();
+    const user = owner(req);
     const q = new URL(req.url).searchParams;
     // Which paid services have a key in .dev.vars (recognition and repair run on this machine).
-    if (q.has("capabilities")) return Response.json({ world: !!(bindings().secrets.WORLDLABS_API_KEY || process.env.WORLDLABS_API_KEY), furniture: !!(bindings().secrets.TRIPO_API_KEY || process.env.TRIPO_API_KEY) });
-    if (q.has("budgets")) return Response.json({world: await budgetSummary("world"), furniture: await budgetSummary("furniture")});
-    if (q.has("services")) return Response.json(await balances());
+    const keys = { world: !!(bindings().secrets.WORLDLABS_API_KEY || process.env.WORLDLABS_API_KEY), furniture: !!(bindings().secrets.TRIPO_API_KEY || process.env.TRIPO_API_KEY) };
+    // Online, also what this visitor may still make today and whether the site's caps leave room.
+    const site = async () => ({ public: true, left: await allowanceLeft(bindings().db, { user, client: await clientOf(req) }), daily: daily(), open: await siteOpen() });
+    if (q.has("capabilities")) return Response.json(isPublic() ? { ...keys, ...(await site()) } : keys);
+    if (q.has("budgets")) return Response.json(isPublic() ? await siteOpen() : {world: await budgetSummary("world"), furniture: await budgetSummary("furniture")});
+    if (q.has("services")) {
+      const b = await balances();
+      if (!isPublic()) return Response.json(b);
+      // The account balances stay private online: only whether each service answers.
+      const state = (x: { error?: string; errorEn?: string } | undefined) => (x?.error ? { available: false, error: x.error, errorEn: x.errorEn } : { available: true });
+      return Response.json({ world: state(b.world), tripo: state(b.tripo), ...(await site()) });
+    }
     if (q.has("id")) return Response.json(await getProject(q.get("id")!, user));
     if (q.has("list")) {
       // The person's own spaces, newest first, for the home page (the example room has its own button).
@@ -72,7 +90,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const lang = langOf(req);
   try {
-    const user = owner();
+    const user = owner(req);
+    const who: Who = { user, client: isPublic() ? await clientOf(req) : "local" };
     const origin = req.headers.get("origin");
     if (origin && new URL(origin).host !== new URL(req.url).host)
       throw say("请求来源不被允许。", "Requests from that page aren't allowed.");
@@ -89,6 +108,10 @@ export async function POST(req: Request) {
       )
         throw say("请选择不超过 10 MB 的 JPG、PNG 或 WebP 图片。", "Choose a JPG, PNG or WebP image of 10 MB or less.");
       if (!/^[a-zA-Z0-9_-]{1,90}$/.test(role)) throw say("无效资源名。", "Invalid file role.");
+      if (isPublic()) {
+        if ((await allowanceLeft(bindings().db, who)).uploads <= 0) throw usedUp("upload");
+        await bindings().db.prepare("INSERT INTO submissions(id,owner,client,kind,created) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(), user, who.client, "upload", Date.now()).run();
+      }
       const data = await file.arrayBuffer();
       const hash = Array.from(
         new Uint8Array(await crypto.subtle.digest("SHA-256", data)),
@@ -117,6 +140,10 @@ export async function POST(req: Request) {
           .bind(user)
           .first<{ id: string }>();
         if (demo) return Response.json(await getProject(demo.id, user));
+      }
+      if (isPublic()) {
+        const n = await db.prepare("SELECT COUNT(*) AS n FROM projects WHERE owner=?").bind(user).first<{ n: number }>();
+        if ((n?.n ?? 0) >= MAX_SPACES) throw say(`每位访客最多 ${MAX_SPACES} 个空间，删掉一个再新建吧。`, `A visitor can keep up to ${MAX_SPACES} spaces. Delete one to make a new one.`);
       }
       const p = emptyProject(
         crypto.randomUUID(),
@@ -315,7 +342,7 @@ export async function POST(req: Request) {
         });
       }
       // Reserve credits first: when the budget is exceeded nothing is saved.
-      await enqueue(p, user, "furniture", id, { image: photo });
+      await enqueue(p, who, "furniture", id, { image: photo });
       p.items.push({
         id, name, kind, status: "queued",
         position: [e.center[0], p.floor.height, e.center[2]],
@@ -328,7 +355,7 @@ export async function POST(req: Request) {
     if (b.action === "set-furniture-input")
       return Response.json(await saveProject(await setFurnitureInput(p, b), user));
     if (b.action === "add-furniture") {
-      const { note, added } = await addFurniture(p, user, b, lang);
+      const { note, added } = await addFurniture(p, who, b, lang);
       await saveProject(p, user);
       return Response.json({ ...(await getProject(p.id, user)), note, added });
     }
@@ -546,21 +573,22 @@ export async function POST(req: Request) {
         throw say(bal.tripo.error || "Tripo 可用积分不足。", bal.tripo.errorEn || "Not enough Tripo credits.");
       p.stage = "generating";
       await saveProject(p, user);
-      await enqueue(p, user, "world", "room", { image: p.background });
+      await enqueue(p, who, "world", "room", { image: p.background });
       if (p.branch === "edit")
         for (const i of p.items)
           // A clean product photo, when the user gave one, models better than the cut-out.
-          await enqueue(p, user, "furniture", i.id, {
+          await enqueue(p, who, "furniture", i.id, {
             image: p.productPhotos?.[i.id] ?? p.cutouts![i.id],
           });
       return Response.json(await getProject(p.id, user));
     }
     if (b.action === "tick") return Response.json(await tick(p.id, user));
     if (b.action === "retry") {
-      await retryJob(b.task, p.id, user, b.confirmPaid === true);
+      await retryJob(b.task, p.id, who, b.confirmPaid === true);
       return Response.json(await getProject(p.id, user));
     }
     if (b.action === "regenerate") {
+      if (isPublic()) throw say("在线版不提供高精度重新生成。", "The online version doesn't regenerate in high detail.");
       const it = p.items.find((i) => i.id === b.item);
       if (!it || !it.model || it.model.startsWith("/") || it.catalogId)
         throw say("只有用照片生成的家具可以重新生成。", "Only pieces made from a photo can be regenerated.");

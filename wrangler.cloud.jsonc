@@ -1,0 +1,26 @@
+// The public website on Cloudflare Workers (npm run deploy:cloud; README “公开网站”). The local app
+// on the Mac keeps its own settings in vite.config.ts. Ids here are not secrets; the API keys are
+// set with `wrangler secret put` and never live in this file.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "diorama",
+  "main": "./build/worker.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    // `wrangler d1 create diorama` prints the id to put here.
+    { "binding": "DB", "database_name": "diorama", "database_id": "00000000-0000-4000-8000-0000000000c1", "migrations_dir": "drizzle" }
+  ],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "diorama-files" }],
+  "vars": {
+    // Anonymous visitors, each with a daily free allowance (lib/server/site.ts).
+    "DIORAMA_PUBLIC": "1",
+    "DAILY_ROOMS": "1",
+    "DAILY_PIECES": "4",
+    "DAILY_UPLOADS": "60",
+    // Credits the whole site may spend; generation stops there, the sample bedroom keeps working.
+    "WORLDLABS_CREDIT_LIMIT": "2300",
+    "TRIPO_CREDIT_LIMIT": "1400"
+  },
+  "observability": { "enabled": true }
+}

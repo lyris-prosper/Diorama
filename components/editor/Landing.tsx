@@ -5,6 +5,7 @@ import { ArrowRight, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { ContinueCard, type SpaceSummary } from "./SpacesDialog";
 import { isOnlineDemo } from "@/lib/asset-url";
+import type { PublicSite } from "@/lib/types";
 
 const Maquette = dynamic(() => import("./Maquette"), { ssr: false, loading: () => <div className="maquette" /> });
 
@@ -18,6 +19,7 @@ export default function Landing({
   onOpenSpace,
   onAllSpaces,
   onDropFile,
+  site,
 }: {
   busy: boolean;
   spaces: SpaceSummary[] | null;
@@ -26,9 +28,12 @@ export default function Landing({
   onOpenSpace: (id: string) => void;
   onAllSpaces: () => void;
   onDropFile: (file: File) => void;
+  /** The public website's free allowance, or null in the Mac version. */
+  site: PublicSite | null;
 }) {
   const { lang, t } = useLang();
   const online = isOnlineDemo();
+  const samples = online || !!site;
   const [over, setOver] = useState(false);
   const steps =
     lang === "en"
@@ -91,13 +96,18 @@ export default function Landing({
             {t("上传房间照片", "Upload a room photo")}
           </button>
           <button className="text-button" disabled={busy} onClick={onDemo}>
-            {online ? t("看示例卧室", "See the sample bedroom") : t("先看示例房间", "See a sample room")} <ArrowRight size={15} />
+            {samples ? t("看示例卧室", "See the sample bedroom") : t("先看示例房间", "See a sample room")} <ArrowRight size={15} />
           </button>
         </div>
         <p className="fine-print">
           {online
             ? t("在线演示：用示例卧室体验挪动、换家具和吊灯；用你自己的房间照片生成 3D，需要在本地运行完整版。", "Online demo: the sample bedroom shows it all. A 3D room from your own photo needs the full app running locally.")
-            : t("JPG / PNG / WebP，也可以直接把照片拖到页面上。", "Or drop a photo anywhere.")}
+            : site
+              ? t(
+                  `免费试用：每人每天可以把 ${site.daily.world} 张房间照片变成 3D，再生成 ${site.daily.furniture} 件家具。照片会发送给 World Labs 和 Tripo 来生成 3D。`,
+                  `Free to try: turn ${site.daily.world} room photo a day into 3D, and make ${site.daily.furniture} pieces. Photos are sent to World Labs and Tripo to make the 3D.`,
+                )
+              : t("JPG / PNG / WebP，也可以直接把照片拖到页面上。", "Or drop a photo anywhere.")}
         </p>
         {!!spaces?.length && (
           <div className="my-spaces">

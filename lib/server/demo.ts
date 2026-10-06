@@ -1,7 +1,7 @@
 // The sample bedroom (lib/demo-room.ts) on the server: its room files under `presets/`, which no
 // space owns and deleting a space never removes, and reuse of furniture models already generated.
 import { bindings, cacheRemote } from "./storage";
-import { TRIPO_QUALITY } from "./provider-http";
+import { tripoQuality } from "./provider-http";
 import { DEMO_ROOM, demoPieceFor, shaOfKey, type DemoModel } from "../demo-room";
 import type { Project } from "../types";
 
@@ -47,7 +47,7 @@ export async function reusableModel(user: string, photo: string, print?: string)
   const { db, bucket } = bindings();
   const jobs = await db
     .prepare("SELECT project,target FROM jobs WHERE owner=? AND kind='furniture' AND status='done' AND instr(payload, ?) > 0 AND json_extract(payload,'$.quality')=? ORDER BY updated DESC LIMIT 10")
-    .bind(user, sha, TRIPO_QUALITY)
+    .bind(user, sha, tripoQuality())
     .all<{ project: string; target: string }>();
   for (const j of jobs.results) {
     const row = await db.prepare("SELECT data FROM projects WHERE id=? AND owner=?").bind(j.project, user).first<{ data: string }>();

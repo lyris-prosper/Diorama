@@ -1,22 +1,39 @@
 import { bindings, getProject, saveProject, cacheRemote, slimModel } from "./storage";
 import { startWorld, startTripo, pollWorld, pollTripo } from "./providers";
-import { ProviderError, billing, TRIPO_QUALITY } from "./provider-http";
+import { ProviderError, billing, tripoQuality } from "./provider-http";
 import { estimate, budgetLimit, BUDGET_USED_SQL, settle } from "./job-budget";
 import type { Project } from "../types";
 import { say, both } from "./say";
-export async function enqueue(p: Project, user: string, kind: string, target: string, payload: any) {
+import { isPublic, quotaCheck, recordSubmission, allowanceLeft, usedUp, siteSpent, type Who } from "./site";
+/** Runs a paid submission and, online, records it against the visitor's day in the same batch. */
+async function submit(db: D1Database, statement: D1PreparedStatement, kind: "world" | "furniture", who: Who) {
+  const results = isPublic() ? await db.batch([statement, recordSubmission(db, kind, who)]) : [await statement.run()];
+  return results[0].meta.changes > 0;
+}
+/** Why a paid submission was turned away: the visitor's day, the site's cap, or the local budget. */
+async function refusal(kind: "world" | "furniture", who: Who, local: Error) {
+  if (!isPublic()) return local;
+  const left = await allowanceLeft(bindings().db, who);
+  return (kind === "world" ? left.rooms : left.pieces) === 0 ? usedUp(kind) : siteSpent();
+}
+const paidKind = (kind: string) => (kind === "world" ? "world" : "furniture");
+export async function enqueue(p: Project, who: Who, kind: string, target: string, payload: any) {
   const { db } = bindings();
+  const user = who.user;
   const id = `${p.id}-${kind}-${target}`;
   const cost = estimate(kind);
-  // Furniture is made at the high-detail settings; the job records it, for reuse.
-  if (kind === "furniture") payload = { ...payload, quality: TRIPO_QUALITY };
-  await db.prepare(`INSERT OR IGNORE INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated)
-    SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${BUDGET_USED_SQL} + ? <= ?`)
-    .bind(id,p.id,user,kind,target,"queued",JSON.stringify(payload),1,Date.now(),cost,cost,kind,kind,cost,budgetLimit(kind)).run();
-  if (!(await db.prepare("SELECT id FROM jobs WHERE id=? AND owner=?").bind(id,user).first())) throw say("已达到本地生成预算上限；这不是服务商余额不足。", "The local generation budget is used up (this is not the provider's balance).");
+  // Furniture records the settings it is made at (high detail locally, web online), for reuse.
+  if (kind === "furniture") payload = { ...payload, quality: tripoQuality() };
+  const quota = quotaCheck(paidKind(kind), who);
+  await submit(db, db.prepare(`INSERT OR IGNORE INTO jobs(id,project,owner,kind,target,status,payload,attempt,updated,reserved,estimated)
+    SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${BUDGET_USED_SQL} + ? <= ? AND ${quota.sql}`)
+    .bind(id,p.id,user,kind,target,"queued",JSON.stringify(payload),1,Date.now(),cost,cost,kind,kind,cost,budgetLimit(kind),...quota.args), paidKind(kind), who);
+  if (!(await db.prepare("SELECT id FROM jobs WHERE id=? AND owner=?").bind(id,user).first()))
+    throw await refusal(paidKind(kind), who, say("已达到本地生成预算上限；这不是服务商余额不足。", "The local generation budget is used up (this is not the provider's balance)."));
 }
-export async function retryJob(id: string, project: string, user: string, confirmPaid = false) {
+export async function retryJob(id: string, project: string, who: Who, confirmPaid = false) {
   const { db } = bindings();
+  const user = who.user;
   const j = await db.prepare("SELECT * FROM jobs WHERE id=? AND project=? AND owner=?").bind(id,project,user).first<any>();
   if (!j || !["failed","paused","uncertain"].includes(j.status)) throw say("此任务当前不能重试。", "This job can't be retried now.");
   const result = j.result ? JSON.parse(j.result) : {};
@@ -29,11 +46,12 @@ export async function retryJob(id: string, project: string, user: string, confir
   if (!confirmPaid) throw say(`重新生成预计消耗 ${estimate(j.kind)} 积分，请明确确认后再提交。`, `Generating again costs about ${estimate(j.kind)} credits. Confirm before submitting.`);
   if (j.attempt >= 3) throw say("已达到 3 次提交上限，请先检查输入或服务商原因。", "This job has been submitted 3 times, the limit. Check the input or the provider first.");
   const cost = estimate(j.kind);
-  const r = await db.prepare(`UPDATE jobs SET status='queued',provider=NULL,attempt=attempt+1,error=NULL,result=NULL,
+  const quota = quotaCheck(paidKind(j.kind), who);
+  const changed = await submit(db, db.prepare(`UPDATE jobs SET status='queued',provider=NULL,attempt=attempt+1,error=NULL,result=NULL,
     updated=?,reserved=?,estimated=?,actual_credits=NULL,billing_details=NULL,settled=0,poll_started=NULL,next_poll=0,poll_failures=0
-    WHERE id=? AND status=? AND attempt=? AND ${BUDGET_USED_SQL} + ? <= ?`)
-    .bind(Date.now(),cost,cost,j.id,j.status,j.attempt,j.kind,j.kind,cost,budgetLimit(j.kind)).run();
-  if (!r.meta.changes) throw say("任务状态已变更或重新生成将超出本地预算上限。", "The job changed meanwhile, or generating again would exceed the local budget.");
+    WHERE id=? AND status=? AND attempt=? AND ${BUDGET_USED_SQL} + ? <= ? AND ${quota.sql}`)
+    .bind(Date.now(),cost,cost,j.id,j.status,j.attempt,j.kind,j.kind,cost,budgetLimit(j.kind),...quota.args), paidKind(j.kind), who);
+  if (!changed) throw await refusal(paidKind(j.kind), who, say("任务状态已变更或重新生成将超出本地预算上限。", "The job changed meanwhile, or generating again would exceed the local budget."));
 }
 /**
  * Makes a finished piece again at the current (high-detail) settings, from the same photo: the job
@@ -41,12 +59,14 @@ export async function retryJob(id: string, project: string, user: string, confir
  * its old model until the new one is ready.
  */
 export async function regenerateJob(project: string, item: string, user: string) {
+  // High detail needs the local model optimizer: it is made on the Mac version only.
+  if (isPublic()) throw say("在线版不提供高精度重新生成。", "The online version doesn't regenerate in high detail.");
   const { db } = bindings();
   const id = `${project}-furniture-${item}`;
   const j = await db.prepare("SELECT id,status,payload,attempt FROM jobs WHERE id=? AND owner=?").bind(id,user).first<{ id: string; status: string; payload: string; attempt: number }>();
   if (!j) throw say("找不到这件家具的生成记录（复用来的模型不能重新生成）。", "There's no generation record for this piece (a reused model can't be regenerated).");
   if (!["done","failed"].includes(j.status)) throw say("这件家具正在生成，请等它完成。", "This piece is still being generated. Wait for it to finish.");
-  const payload = { ...JSON.parse(j.payload), quality: TRIPO_QUALITY };
+  const payload = { ...JSON.parse(j.payload), quality: tripoQuality() };
   const cost = estimate("furniture");
   const r = await db.prepare(`UPDATE jobs SET status='queued',provider=NULL,attempt=attempt+1,error=NULL,result=NULL,payload=?,
     updated=?,reserved=?,estimated=?,actual_credits=NULL,billing_details=NULL,settled=0,poll_started=NULL,next_poll=0,poll_failures=0

@@ -66,6 +66,22 @@ Safari 17（macOS 14.5，Apple M3 上实测）的 JavaScriptCore 在两个 Web W
 - **文件**：4 个 `.spz` 放在 R2 的 `presets/bedroom/`，不属于任何空间。`ensureDemoFiles()` 先从本机原有的键复制，没有就从 Marble 公开 CDN 下载（免费）；启动脚本会在服务就绪后调用 `prepare-demo` 提前准备。资产接口对 `presets/` 放行，删除空间永远不碰 `presets/`。
 - **床**：已生成的床模型和缩略图在 `public/demo/`，静态提供。点在床的擦除框范围内时，编辑面板预填床的类别、尺寸和擦除框；上传的床照片 SHA-256 相同（或指纹 ≤ 6）时，`edit-furniture` 直接放回这个模型（按原来的摆位和朝向），不建任务、不预留积分。其他照片如果以前用 Tripo 生成过，也会从 `jobs` 记录里找到原模型复用。
 
+## 公开网站（`lib/server/site.ts`、`build/worker.ts`、`wrangler.cloud.jsonc`）
+
+同一套代码部署到 Cloudflare Workers（`npm run deploy:cloud`），Worker 变量 `DIORAMA_PUBLIC=1` 打开公开模式。本机 `npm start` 不受影响。
+
+- **访客**：`build/worker.ts` 给没有 `diorama_visitor` Cookie 的请求生成随机 UUID，写进请求再交给应用，并在响应里设置 Cookie（HttpOnly、Secure、SameSite=Lax，有效期 1 年）。`owner(req)` 把它变成 `visitor-<uuid>`，现有的 `owner=?` 查询就把不同访客的空间和文件隔开了。本机仍是 `local-preview`。
+- **额度**：`submissions` 表（`drizzle/0002_public_quota.sql`）每次付费提交（房间、家具、付费重试）和上传记一行，按访客编号或网络地址哈希（`CF-Connecting-IP`）计数。
+  - 额度条件和全站预算（`BUDGET_USED_SQL`）写在同一个 INSERT/UPDATE 的 `WHERE` 里，提交记录在同一个 D1 batch 中用 `changes()` 写入，并发提交也不会超额。
+  - 被拒时说明原因：今天的额度用完，或全站上限已到。
+  - `?capabilities` 给页面返回剩余次数，按钮文案改为“免费，今天还能生成 N 个”。
+- **云端没有的本机服务**：
+  - 不经过代理中转（`outbound.ts` 在没有 `LOCAL_RELAY` 时直接请求）；
+  - 没有模型压缩器，Tripo 改用 `TRIPO_WEB_SETTINGS`（细致贴图、最多 15 万三角面、meshopt）；
+  - Worker 对 `/api/local/status` 直接回答“没有本机模型”，页面跳过自动识别并说明。
+- **下载**：`cacheRemote` 在知道长度时用 `FixedLengthStream` 把文件直接流进 R2（Worker 只有 128 MB 内存），写完读前 12 字节校验格式，不合格就删除。
+- **构建**：`DIORAMA_TARGET=cloud vite build` 读取 `wrangler.cloud.jsonc`。构建会去掉 `public/vision`，并删除插件复制到 `dist/server/` 的 `.dev.vars`；密钥只作为 Worker secrets 存在。
+
 ## 在线演示版（`demo/`、`lib/demo-backend.ts`）
 
 部署到 Vercel 的是同一套页面的静态构建（`vite.demo.config.ts`，输出 `dist-demo/`），没有服务器。

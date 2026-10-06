@@ -1,5 +1,6 @@
 import { TRIPO_CREDITS, WORLD_CREDITS } from "../credits";
 import { outbound } from "./outbound";
+import { isPublic } from "./site";
 export type ErrorCategory = "auth" | "balance" | "parameters" | "timeout" | "provider" | "network";
 export class ProviderError extends Error {
   category: ErrorCategory;
@@ -103,4 +104,15 @@ export const TRIPO_SETTINGS = Object.freeze({
   model: "v3.1-20260211", texture: true, pbr: true, texture_quality: "extreme",
   geometry_quality: "detailed", enable_image_autofix: false,
 });
-export const TRIPO_QUALITY = "hd";
+/**
+ * The public website has no model optimizer (it needs about 1 GB of memory), so Tripo is asked for
+ * a model the browser can load as it comes: detailed PBR textures, at most 150k triangles,
+ * meshopt-compressed geometry.
+ */
+export const TRIPO_WEB_SETTINGS = Object.freeze({
+  model: "v3.1-20260211", texture: true, pbr: true, texture_quality: "detailed",
+  geometry_quality: "standard", face_limit: 150000, compress: "geometry", enable_image_autofix: false,
+});
+export const tripoSettings = () => (isPublic() ? TRIPO_WEB_SETTINGS : TRIPO_SETTINGS);
+/** The settings a model was made at, recorded in its job so a photo seen again reuses only its like. */
+export const tripoQuality = () => (isPublic() ? "web" : "hd");

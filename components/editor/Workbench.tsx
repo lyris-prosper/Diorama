@@ -40,7 +40,7 @@ import {
   Lamp,
   Hand,
 } from "lucide-react";
-import { MAX_ITEMS, type Project, type Item, type Branch, type Candidate, type Task, type Erasure, type Dims } from "@/lib/types";
+import { MAX_ITEMS, type Project, type Item, type Branch, type Candidate, type Task, type Erasure, type Dims, type PublicSite } from "@/lib/types";
 import { availabilityLabel, buyNoteText, catalogItem, dimsText, formatOriginal, formatPrice, formatUSD, itemName, marketLabel, variantText } from "@/lib/catalog";
 import { currentLang, pick, useDocumentLang, useLang, type T } from "@/lib/i18n";
 import { DEMO_ROOM, demoPieceAt, demoPieceFor, spaceName } from "@/lib/demo-room";
@@ -278,6 +278,9 @@ export default function Workbench() {
   const [editReuse, setEditReuse] = useState(false);
   const [imageRepair, setImageRepair] = useState<boolean | null>(null);
   const [generationReady, setGenerationReady] = useState({world:false,furniture:false});
+  // The public website: what this visitor can still make free today, and whether the site's caps
+  // leave room (null in the Mac version).
+  const [site, setSite] = useState<PublicSite | null>(null);
   const [repairMessage, setRepairMessage] = useState("");
   const repairAbort = useRef<AbortController | null>(null);
   const recognitionAbort = useRef<AbortController | null>(null);
@@ -301,9 +304,10 @@ export default function Workbench() {
     return api({action:"retry",id:current.id,task:task.id,confirmPaid});
   }
   useEffect(() => {
-    Promise.all([localStatus(),fetch("/api/workbench?capabilities=1").then(r=>r.json() as Promise<{world:boolean;furniture:boolean}>) ]).then(([local,j])=>{
+    Promise.all([localStatus(),fetch("/api/workbench?capabilities=1").then(r=>r.json() as Promise<{world:boolean;furniture:boolean} & Partial<PublicSite>>) ]).then(([local,j])=>{
       setImageRepair(!!local?.inpainting);
       setGenerationReady({world:!!j.world,furniture:!!j.furniture});
+      if (j.public) setSite(j as PublicSite);
     }).catch(()=>{});
     // The home page comes first: the person picks a space, uploads a photo or opens the example.
     // A link can open one space directly (…/?space=<id>), e.g. to rehearse a demo.
@@ -439,6 +443,12 @@ export default function Workbench() {
     setRecognitionError(""); setRecognitionSkipped(""); setRecognitionPercent(undefined);
     // Recognition needs about 3 GB free; on a busy 8 GB Mac it is skipped with a note instead of failing.
     const local = await localStatus();
+    if (!local?.local && site) {
+      // The public website has no local models.
+      if (recognitionAbort.current === controller) recognitionAbort.current = null;
+      setRecognitionSkipped(t("在线版不做自动识别：可以直接生成 3D 房间，或手动圈选家具。", "The online version doesn't recognize furniture automatically: generate the 3D room directly, or outline furniture by hand."));
+      return;
+    }
     if (local?.memoryMB !== undefined && local.neededMB && local.memoryMB < local.neededMB.recognize) {
       if (recognitionAbort.current === controller) recognitionAbort.current = null;
       setRecognitionSkipped(
@@ -496,8 +506,28 @@ export default function Workbench() {
       setBusy(false);
       setRepairMessage("");
       repairAbort.current=null;
+      if (site) refreshSite();
     }
   };
+  // Today's free generations change with what this visitor submits.
+  const refreshSite = () =>
+    void fetch("/api/workbench?capabilities=1")
+      .then((r) => r.json() as Promise<Partial<PublicSite>>)
+      .then((j) => j.public && setSite(j as PublicSite))
+      .catch(() => {});
+  const freeRooms = site ? (site.open.world ? site.left.rooms : 0) : null;
+  const freePieces = site ? (site.open.furniture ? site.left.pieces : 0) : null;
+  const canWorld = generationReady.world && freeRooms !== 0;
+  const canPiece = generationReady.furniture && freePieces !== 0;
+  /** Why the visitor can't generate free right now (public website), or "". */
+  const freeOut = (kind: "world" | "furniture") =>
+    !site || (kind === "world" ? freeRooms : freePieces) !== 0
+      ? ""
+      : !site.open[kind]
+        ? t("这个网站的免费生成额度已经全部用完了；示例卧室和家具库还可以继续体验。", "The site's free generations are all used up. The sample bedroom and the library still work.")
+        : kind === "world"
+          ? t(`今天的免费房间额度用完了（每人每天 ${site.daily.world} 个），明天再来。`, `Today's free room is used (${site.daily.world} a day). Come back tomorrow.`)
+          : t(`今天的免费家具额度用完了（每人每天 ${site.daily.furniture} 件），明天再来。`, `Today's free pieces are used (${site.daily.furniture} a day). Come back tomorrow.`);
   async function create(mode: "real" | "demo") {
     recognitionAbort.current?.abort();
     repairAbort.current?.abort();
@@ -916,7 +946,9 @@ export default function Workbench() {
     void loadSpaces().catch(() => undefined);
   }
   // Online, the sample is the Marble bedroom (its photo, as if uploaded); locally, the simple example room.
-  const demo = () => (isOnlineDemo() ? void samplePhoto("bedroom.jpg").then(receive) : run(async () => { await create("demo"); }));
+  // Online (the demo build or the public website), the sample bedroom from its photo: free.
+  const samples = isOnlineDemo() || !!site;
+  const demo = () => (samples ? void samplePhoto("bedroom.jpg").then(receive) : run(async () => { await create("demo"); }));
   // A room already generated on the Marble website (often a better model than the draft) is
   // brought in from its public file links, at no credit cost.
   async function importWorld() {
@@ -1322,7 +1354,7 @@ export default function Workbench() {
           ) : (
             <>
               <button className="text-button header-sample" disabled={busy || boot} onClick={demo}>
-                {isOnlineDemo() ? t("看示例卧室", "Sample bedroom") : t("看示例房间", "Sample room")}
+                {samples ? t("看示例卧室", "Sample bedroom") : t("看示例房间", "Sample room")}
               </button>
               <button className="button primary" disabled={busy || boot} onClick={() => fileRef.current?.click()}>
                 <Upload size={16} />
@@ -1419,6 +1451,7 @@ export default function Workbench() {
               onOpenSpace={(id) => void openSpace(id)}
               onAllSpaces={() => setSpacesOpen(true)}
               onDropFile={(f) => void receive(f)}
+              site={site}
             />
             <SpacesDialog
               open={spacesOpen}
@@ -1593,7 +1626,7 @@ export default function Workbench() {
                       const generating = ["queued", "running"].includes(i.status) || ["queued", "running", "submitting"].includes(task?.status ?? "");
                       // Made again in high detail: the old model stays in use meanwhile.
                       const regenerating = generating && !!i.model && (i.status === "ready" || i.status === "placed");
-                      const remakeable = !generating && !!i.model && !i.model.startsWith("/") && !i.catalogId && task?.status === "done" && task.quality !== "hd";
+                      const remakeable = !site && !generating && !!i.model && !i.model.startsWith("/") && !i.catalogId && task?.status === "done" && task.quality !== "hd";
                       const entry = i.catalogId ? catalogItem(i.catalogId) : undefined;
                       const meta = entry ? `${entry.shop} · ${formatPrice(entry)}` : i.dims ? `${i.dims.w} × ${i.dims.d} × ${i.dims.h} cm` : "";
                       const name = displayName(i);
@@ -1744,8 +1777,10 @@ export default function Workbench() {
                 ? t("示例房间不生成新家具，可以从家具库挑选。", "The sample room doesn't generate furniture. Pick from the library instead.")
                 : !generationReady.furniture
                   ? t("尚未配置 Tripo，暂时不能生成家具。可以先从家具库挑选。", "Tripo isn't set up, so furniture can't be generated yet. Pick from the library meanwhile.")
-                  : null
+                  : freeOut("furniture") || null
             }
+            free={freePieces}
+            samples={samples}
             onSubmit={addPieces}
           />
         )}
@@ -1872,7 +1907,7 @@ export default function Workbench() {
                   </>
                 )}
               </button>
-              {isOnlineDemo() && p?.room?.preset === DEMO_ROOM.id && !editDraft.photo && (
+              {samples && p?.room?.preset === DEMO_ROOM.id && !editDraft.photo && (
                 <button className="text-button sample-photo" onClick={() => void samplePhoto("bed.png").then(choosePhoto)}>
                   <ImageIcon size={14} />
                   {t("用示例卧室的床照片", "Use the sample bed photo")}
@@ -1895,10 +1930,16 @@ export default function Workbench() {
                   {t("这张照片之前已经生成过 3D 模型，直接复用，不消耗积分。", "This photo was already made into 3D, so its model is reused. No credits.")}
                 </p>
               ) : (
-                <label className="approve">
-                  <input type="checkbox" checked={editDraft.agree} onChange={(e) => changeEdit({ agree: e.target.checked })} />
-                  {t(`用 Tripo 高精度生成 3D 模型（8K 贴图），预计消耗约 ${TRIPO_CREDITS} 积分`, `Generate the 3D model with Tripo in high detail (8K textures), about ${TRIPO_CREDITS} credits`)}
-                </label>
+                freeOut("furniture") ? (
+                  <p className="small muted">{freeOut("furniture")}</p>
+                ) : (
+                  <label className="approve">
+                    <input type="checkbox" checked={editDraft.agree} onChange={(e) => changeEdit({ agree: e.target.checked })} />
+                    {site
+                      ? t(`用 Tripo 生成 3D 模型（免费 · 今天还能生成 ${freePieces} 件）`, `Generate the 3D model with Tripo (free · ${freePieces} left today)`)
+                      : t(`用 Tripo 高精度生成 3D 模型（8K 贴图），预计消耗约 ${TRIPO_CREDITS} 积分`, `Generate the 3D model with Tripo in high detail (8K textures), about ${TRIPO_CREDITS} credits`)}
+                  </label>
+                )
               )}
               <button
                 className="button primary full"
@@ -2016,7 +2057,7 @@ export default function Workbench() {
                       <Download size={15} />
                     </a>
                   )}
-                  {generated && (
+                  {generated && !site && (
                     <button className="icon" title={t(`高精度重新生成（约 ${TRIPO_CREDITS} 积分）`, `Regenerate in high detail (about ${TRIPO_CREDITS} credits)`)} aria-label={t("高精度重新生成", "Regenerate in high detail")} disabled={busy} onClick={() => run(() => regenerate(item))}>
                       <Sparkles size={15} />
                     </button>
@@ -2430,18 +2471,24 @@ export default function Workbench() {
                           </p>
                           <button
                             className="button primary full"
-                            disabled={busy || recognizing || !generationReady.world}
+                            disabled={busy || recognizing || !canWorld}
                             onClick={() => {
-                              if (window.confirm(t(`用 World Labs 草稿模型生成 3D 房间，预计消耗约 ${WORLD_CREDITS} 积分。现在生成？`, `Generate the 3D room with the World Labs draft model, about ${WORLD_CREDITS} credits. Generate now?`)))
-                                void run(() => generate(true));
+                              const ask = site
+                                ? t("用 World Labs 草稿模型生成 3D 房间（免费，计入你今天的房间额度，约 5 分钟）。现在生成？", "Generate the 3D room with the World Labs draft model (free, counts as today's room, about 5 minutes)?")
+                                : t(`用 World Labs 草稿模型生成 3D 房间，预计消耗约 ${WORLD_CREDITS} 积分。现在生成？`, `Generate the 3D room with the World Labs draft model, about ${WORLD_CREDITS} credits. Generate now?`);
+                              if (window.confirm(ask)) void run(() => generate(true));
                             }}
                           >
                             {busy ? <Loader2 className="spin" size={16} /> : <Box size={16} />}
-                            {t(`直接生成 3D 房间（草稿 · 约 ${WORLD_CREDITS} 积分）`, `Generate the 3D room (draft · about ${WORLD_CREDITS} credits)`)}
+                            {site
+                              ? t(`直接生成 3D 房间（草稿 · 免费，今天还能生成 ${freeRooms} 个）`, `Generate the 3D room (draft · free, ${freeRooms} left today)`)
+                              : t(`直接生成 3D 房间（草稿 · 约 ${WORLD_CREDITS} 积分）`, `Generate the 3D room (draft · about ${WORLD_CREDITS} credits)`)}
                           </button>
-                          {!generationReady.world && (
+                          {!generationReady.world ? (
                             <p className="small muted">{t("尚未配置 World Labs 密钥，暂时不能生成；可以导入在 Marble 官网生成的房间。", "No World Labs key is set up, so generation is off; you can import a room made on the Marble website.")}</p>
-                          )}
+                          ) : freeOut("world") ? (
+                            <p className="small muted">{freeOut("world")}</p>
+                          ) : null}
                           <div className="marble-hint">
                             <p>
                               {t(
@@ -2686,7 +2733,7 @@ export default function Workbench() {
                         </label>
                         <button
                           className="button primary full"
-                          disabled={busy || !approved || !processed || !generationReady.world || (p.branch==='edit' && !generationReady.furniture)}
+                          disabled={busy || !approved || !processed || !canWorld || (p.branch==='edit' && !canPiece)}
                           onClick={() => run(() => generate())}
                         >
                           {p.branch === "edit" ? t("继续生成 3D 空间与家具", "Generate the 3D room and furniture") : t("继续生成 3D 空间", "Generate the 3D room")}
@@ -2694,7 +2741,9 @@ export default function Workbench() {
                         <p className="small muted">
                           {!generationReady.world || (p.branch==='edit'&&!generationReady.furniture)
                             ? t("尚未配置 3D 服务，不影响上面的免费修复和下载。", "3D services aren't set up; the free repair and download above still work.")
-                            : t(
+                            : freeOut("world") || (p.branch === "edit" ? freeOut("furniture") : "") || site
+                              ? freeOut("world") || (p.branch === "edit" ? freeOut("furniture") : "") || t("免费：计入你今天的额度。未拍到的部分属于推测补全。", "Free: counts toward today's allowance. What the photo didn't show is inferred.")
+                              : t(
                                 `预计消耗 World Labs 约 ${WORLD_CREDITS} 积分${p.branch === "edit" && p.cutouts ? `，Tripo ${TRIPO_CREDITS} × ${Object.keys(p.cutouts).length} = ${TRIPO_CREDITS * Object.keys(p.cutouts).length} 积分` : ""}。空间使用草稿模式，家具分别生成${Object.keys(p.productPhotos ?? {}).some((id) => p.cutouts?.[id]) ? "（换了白底照片的用照片生成）" : ""}；未拍到的部分属于推测补全。`,
                                 `About ${WORLD_CREDITS} World Labs credits${p.branch === "edit" && p.cutouts ? `, plus Tripo ${TRIPO_CREDITS} × ${Object.keys(p.cutouts).length} = ${TRIPO_CREDITS * Object.keys(p.cutouts).length}` : ""}. The room uses the draft model and each piece is generated separately${Object.keys(p.productPhotos ?? {}).some((id) => p.cutouts?.[id]) ? " (from the product photo where you gave one)" : ""}; what the photo didn't show is inferred.`,
                               )}
@@ -2886,7 +2935,25 @@ export default function Workbench() {
               </button>
             </div>
             {!services ? (
-              <p>{t("正在读取实际余额…", "Reading the balances…")}</p>
+              <p>{t("正在读取服务状态…", "Checking the services…")}</p>
+            ) : services.public ? (
+              <>
+                {(["world", "tripo"] as const).map((k) => (
+                  <div className="service-row" key={k}>
+                    <strong>{k === "world" ? "World Labs" : "Tripo"}</strong>
+                    <span>{services[k]?.available ? t("可用", "Available") : (lang === "en" ? services[k]?.errorEn : undefined) || services[k]?.error || t("暂不可用", "Unavailable")}</span>
+                  </div>
+                ))}
+                <div className="service-row">
+                  <strong>{t("你今天的免费额度", "Your free generations today")}</strong>
+                  <span>
+                    {t(`房间 ${services.open?.world ? services.left?.rooms : 0} · 家具 ${services.open?.furniture ? services.left?.pieces : 0}`, `Rooms ${services.open?.world ? services.left?.rooms : 0} · pieces ${services.open?.furniture ? services.left?.pieces : 0}`)}
+                  </span>
+                </div>
+                <p className="muted">
+                  {t("在线版免费试用：每人每天可以生成 1 个房间和 4 件家具，全站额度用完后只能看示例。照片会发送给 World Labs 和 Tripo 来生成 3D；自动识别和背景修复只在本地版提供。", "Free to try online: one room and four pieces a day per visitor, until the site's budget runs out. Photos are sent to World Labs and Tripo to make the 3D; automatic recognition and background repair are in the local version only.")}
+                </p>
+              </>
             ) : (
               <>
                 <div className="service-row">

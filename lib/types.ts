@@ -75,6 +75,13 @@ export type Task = {
   /** "hd": made at the high-detail settings; unset: an earlier, standard model. */
   quality?: string;
 };
+/** The public website's free allowance for this visitor (GET /api/workbench?capabilities=1 online). */
+export type PublicSite = {
+  public: true;
+  left: { rooms: number; pieces: number; uploads: number };
+  daily: { world: number; furniture: number; upload: number };
+  open: { world: boolean; furniture: boolean };
+};
 export type Project = {
   id: string;
   name: string;

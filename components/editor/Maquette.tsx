@@ -10,9 +10,9 @@ import { catalogItem, formatPrice, itemName } from "@/lib/catalog";
 import { useLang, type Bi, type Lang } from "@/lib/i18n";
 
 // A basswood scale model of a bedroom for the home page, furnished Japanese-calm and a little
-// Instagram-cosy: a low platform bed, paper lantern, linen, plants, and real pieces from the
+// Instagram-cosy: a low platform bed, a cane lounge chair, linen, plants, and real pieces from the
 // furniture library (their own 3D models, with prices). Sun comes through the window; at dusk the
-// lamps, lantern and string lights come on. Every piece on the floor can be picked up and moved.
+// lamps, candle and string lights come on. Every piece on the floor can be picked up and moved.
 
 type Piece = {
   group: THREE.Group;
@@ -409,31 +409,133 @@ function furnish(model: THREE.Group, glows: Glow[]) {
     }
     ["#9DAE8F", "#D9B8A6", "#EFE7DA", "#8C7563"].forEach((c, i) => block(g, [0.2, 0.035, 0.26], [0, 0.558 + i * 0.036, 0.12], c, 0.004));
     put(g, "rattan-box", [0, 0.54, 0.42], Math.PI / 2);
-  });
-  // Paper floor lantern (Akari-like): rice paper on a slim black stand; it glows at dusk.
-  add({ zh: "纸灯笼落地灯", en: "Paper floor lantern" }, "⌀ 45 cm", [0.24, 0.24], 1.25, -2.0, 1.66, (g) => {
-    for (const a of [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3]) {
-      const leg = cylinder(g, 0.006, 0.55, [Math.cos(a) * 0.1, 0.27, Math.sin(a) * 0.1], "#2b2420", 0.006, 6);
-      leg.rotation.set(Math.sin(a) * 0.16, 0, -Math.cos(a) * 0.16);
+    // A ceramic lamp with a pleated linen shade; it carries the room's warm light at dusk.
+    lathe(g, [[0, 0], [0.05, 0], [0.065, 0.05], [0.06, 0.12], [0.03, 0.17], [0.012, 0.19], [0, 0.19]], [0, 0.54, -0.15], mat("#E8DCCB", 0.35));
+    cylinder(g, 0.006, 0.08, [0, 0.76, -0.15], mat("#B08D57", 0.3, { metalness: 0.6 }), 0.006, 8);
+    const shadeGeo = new THREE.CylinderGeometry(0.075, 0.11, 0.15, 96, 1, true);
+    const sp = shadeGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < sp.count; i++) {
+      const x = sp.getX(i),
+        z = sp.getZ(i),
+        a = Math.atan2(z, x),
+        k = 1 + Math.cos(a * 28) * 0.035;
+      sp.setXYZ(i, x * k, sp.getY(i), z * k);
     }
-    cylinder(g, 0.006, 0.3, [0, 0.62, 0], "#2b2420", 0.006, 6);
-    const paper = new THREE.MeshStandardMaterial({ color: "#FBF4E6", roughness: 1, emissive: new THREE.Color("#ffcf8f"), emissiveIntensity: 0.05 });
-    const shade = new THREE.Mesh(new THREE.SphereGeometry(0.22, 40, 28), paper);
-    shade.scale.set(1, 1.28, 1);
-    shade.position.y = 0.98;
+    shadeGeo.computeVertexNormals();
+    const linen = new THREE.MeshStandardMaterial({ color: "#F6EEDF", roughness: 1, side: THREE.DoubleSide, emissive: new THREE.Color("#ffcf8f"), emissiveIntensity: 0.04 });
+    const shade = new THREE.Mesh(shadeGeo, linen);
+    shade.position.set(0, 0.84, -0.15);
     g.add(shadowed(shade, false));
-    for (let i = -4; i <= 4; i++) {
-      const y = (i / 4.6) * 0.27,
-        rr = 0.222 * Math.sqrt(Math.max(0, 1 - (y / 0.282) ** 2));
-      const rib = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.0018, 4, 48), mat("#E7DCC6", 1));
-      rib.rotation.x = Math.PI / 2;
-      rib.position.y = 0.98 + y;
-      g.add(rib);
+    const lamp = new THREE.PointLight("#ffd29a", 0, 4.5, 1.4);
+    lamp.position.set(0.1, 0.84, -0.15);
+    g.add(lamp);
+    glows.push({ material: linen, emissive: 1.1, light: lamp, power: 3 });
+  });
+  // Cane lounge chair: one bent-oak frame per side, a woven cane seat and back, a linen cushion and
+  // an oatmeal knit throw over the arm.
+  add({ zh: "藤编休闲椅", en: "Cane lounge chair" }, "64 × 72 × 74 cm", [0.34, 0.36], 0.74, -1.9, 1.62, (g) => {
+    const chair = new THREE.Group();
+    chair.rotation.y = 1.2;
+    g.add(chair);
+    const oak = mat("#B98B5C", 0.6);
+    for (const x of [-0.3, 0.3]) {
+      const path = new THREE.CatmullRomCurve3(
+        [
+          [x, 0, 0.27],
+          [x, 0.3, 0.29],
+          [x, 0.5, 0.28],
+          [x, 0.56, 0.2],
+          [x, 0.56, -0.12],
+          [x, 0.5, -0.24],
+          [x, 0.24, -0.29],
+          [x, 0, -0.31],
+        ].map(([a, b, c]) => new THREE.Vector3(a, b, c)),
+        false,
+        "catmullrom",
+        0.4,
+      );
+      chair.add(shadowed(new THREE.Mesh(new THREE.TubeGeometry(path, 80, 0.019, 12), oak)));
     }
-    const light = new THREE.PointLight("#ffd29a", 0, 4.5, 1.4);
-    light.position.y = 0.98;
-    g.add(light);
-    glows.push({ material: paper, emissive: 1.25, light, power: 3.2 });
+    for (const [y, z] of [
+      [0.26, 0.24],
+      [0.28, -0.25],
+    ])
+      cylinder(chair, 0.016, 0.6, [0, y, z], oak, 0.016, 16).rotation.z = Math.PI / 2;
+    // Woven cane: an octagon-and-square lattice, see-through.
+    const caneTexture = canvasTexture(256, 256, (c) => {
+      c.fillStyle = "#D7B98A";
+      c.fillRect(0, 0, 256, 256);
+      c.globalCompositeOperation = "destination-out";
+      for (let y = 0; y < 256; y += 32)
+        for (let x = 0; x < 256; x += 32) {
+          c.beginPath();
+          c.arc(x + 16, y + 16, 10.5, 0, Math.PI * 2);
+          c.fill();
+        }
+      c.globalCompositeOperation = "source-over";
+      c.strokeStyle = "rgba(120,86,48,.45)";
+      c.lineWidth = 1.5;
+      for (let i = -256; i < 512; i += 16) {
+        c.beginPath();
+        c.moveTo(i, 0);
+        c.lineTo(i + 256, 256);
+        c.moveTo(i + 256, 0);
+        c.lineTo(i, 256);
+        c.stroke();
+      }
+    });
+    caneTexture.wrapS = caneTexture.wrapT = THREE.RepeatWrapping;
+    caneTexture.repeat.set(3, 2.6);
+    const cane = new THREE.MeshStandardMaterial({ map: caneTexture, roughness: 0.8, alphaTest: 0.4, side: THREE.DoubleSide });
+    const seat = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.5), cane);
+    seat.rotation.x = -Math.PI / 2 + 0.06;
+    seat.position.set(0, 0.29, 0);
+    chair.add(shadowed(seat));
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.42), cane);
+    back.rotation.x = -0.3;
+    back.position.set(0, 0.56, -0.25);
+    chair.add(shadowed(back));
+    cylinder(chair, 0.016, 0.62, [0, 0.77, -0.31], oak, 0.016, 16).rotation.z = Math.PI / 2;
+    block(chair, [0.54, 0.08, 0.46], [0, 0.34, 0.01], "#EEE6D7", 0.035).rotation.x = 0.06;
+    const pillow = block(chair, [0.4, 0.26, 0.09], [0.04, 0.5, -0.16], BLUSH, 0.045);
+    pillow.rotation.set(-0.3, 0.12, 0.05);
+    // The throw: a knit band folded over the right arm, hanging to both sides.
+    const knit = canvasTexture(128, 128, (c) => {
+      c.fillStyle = "#E6DAC4";
+      c.fillRect(0, 0, 128, 128);
+      for (let x = 0; x < 128; x += 16) {
+        const grad = c.createLinearGradient(x, 0, x + 16, 0);
+        grad.addColorStop(0, "rgba(150,120,85,.28)");
+        grad.addColorStop(0.5, "rgba(255,250,240,.25)");
+        grad.addColorStop(1, "rgba(150,120,85,.28)");
+        c.fillStyle = grad;
+        c.fillRect(x, 0, 16, 128);
+      }
+    });
+    knit.wrapS = knit.wrapT = THREE.RepeatWrapping;
+    knit.repeat.set(4, 3);
+    const throwGeo = new THREE.PlaneGeometry(0.3, 0.8, 12, 48);
+    const tp = throwGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < tp.count; i++) {
+      const u = tp.getX(i),
+        v = tp.getY(i);
+      const over = Math.abs(v) - 0.05;
+      const side = Math.sign(v);
+      let x = 0.3 + side * 0.03,
+        y = 0.585;
+      if (over > 0) {
+        x += side * Math.min(over, 0.06) * 0.7;
+        y -= over * 0.95 + Math.sin(u * 18) * 0.008 * over * 8;
+        // Inside the arm it comes to rest on the seat cushion and lies along it.
+        if (side < 0 && y < 0.395) {
+          x -= (0.395 - y) * 0.9;
+          y = 0.395;
+        }
+      } else x = 0.3 + v * 0.6;
+      tp.setXYZ(i, x, y, u * 1.0 - 0.02);
+    }
+    throwGeo.computeVertexNormals();
+    chair.add(shadowed(new THREE.Mesh(throwGeo, new THREE.MeshStandardMaterial({ map: knit, roughness: 1, side: THREE.DoubleSide }))));
   });
   // Round jute rug with two floor cushions and a tea tray.
   add({ zh: "黄麻圆地毯", en: "Round jute rug" }, "⌀ 170 cm", [0.86, 0.86], 0.05, 0.45, 0.5, (g) => {
@@ -957,6 +1059,7 @@ export default function Maquette() {
         <span />
       </div>
       <div className="maquette-controls">
+        <p className="model-hint">{t("拖动家具试试", "Drag anything")}</p>
         <button type="button" className="daylight" aria-pressed={dusk} aria-label={t("切换白天与黄昏", "Switch between day and dusk")} onClick={() => setDusk((v) => !v)}>
           <span className={!dusk ? "on" : ""}>
             <Sun size={14} /> {t("白天", "Day")}
@@ -966,7 +1069,6 @@ export default function Maquette() {
           </span>
         </button>
       </div>
-      <p className="model-hint">{t("拖动家具试试", "Drag anything")}</p>
     </div>
   );
 }

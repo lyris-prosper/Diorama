@@ -8,8 +8,8 @@ import ts from 'typescript';
 
 const CJK=/[一-鿿]/;
 const LATIN=/[A-Za-z]{2}/;
-// Chinese values that are data, shown through a translation (pieceName, the 中 | EN switch).
-const DATA=new Set(['中','书桌','床','柜子','椅子','沙发','家具']);
+// Chinese values that are data, shown through a translation (pieceName).
+const DATA=new Set(['书桌','床','柜子','椅子','沙发','家具']);
 const page=[
   ...readdirSync('components/editor').filter(f=>f.endsWith('.tsx')).map(f=>'components/editor/'+f),
   'lib/catalog.ts','lib/photo.ts','lib/image.ts','lib/align-clean.ts','lib/local-vision.ts','lib/recognition.ts',

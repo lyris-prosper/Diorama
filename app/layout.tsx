@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-// Latin type, bundled so the page looks the same offline: Fraunces for headings, Figtree for text.
+// Latin type, bundled so the page looks the same offline: Fraunces (upright and its true italic)
+// for headings, Figtree for text.
 // Chinese uses the Mac's own Songti and PingFang.
 import "@fontsource-variable/fraunces/full.css";
+import "@fontsource-variable/fraunces/full-italic.css";
 import "@fontsource-variable/figtree";
 import "./globals.css";
 export const metadata: Metadata = {

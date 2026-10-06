@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { useLang } from "@/lib/i18n";
 
-// 中 | EN as a sliding switch: click it, drag the knob sideways, or use the arrow keys.
+// ZH | EN as a sliding switch: click it, drag the knob sideways, or use the arrow keys.
 const TRAVEL = 34;
 
 export default function LangToggle() {
@@ -63,7 +63,7 @@ export default function LangToggle() {
     >
       <span className="lang-thumb" aria-hidden="true" style={offset !== null ? { transform: `translateX(${offset}px)` } : undefined} />
       <span className={"lang-option" + (!en ? " on" : "")} aria-hidden="true">
-        中
+        ZH
       </span>
       <span className={"lang-option" + (en ? " on" : "")} aria-hidden="true">
         EN

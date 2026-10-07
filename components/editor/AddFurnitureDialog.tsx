@@ -270,7 +270,9 @@ export default function AddFurnitureDialog({
           {(samples || isOnlineDemo()) && !rows.some((r) => r.reuse) && (
             <button className="text-button sample-photo" disabled={!!sending} onClick={() => void samplePhoto("pendant.png").then((f) => attach([f]))}>
               <ImagePlus size={14} />
-              {t("用示例吊灯照片（在线演示只认得示例照片）", "Use the sample pendant photo (the online demo knows only the sample photos)")}
+              {isOnlineDemo()
+                ? t("用示例吊灯照片（在线演示只认得示例照片）", "Use the sample pendant photo (the online demo knows only the sample photos)")
+                : t("用示例吊灯照片（不花积分）", "Use the sample pendant photo (no credits)")}
             </button>
           )}
           {rows.length < MAX_BATCH && (

@@ -42,6 +42,8 @@ npm start
 
 ## 公开网站（Cloudflare，访客真实生成）
 
+线上地址：<https://diorama.3dspace.workers.dev>（Worker `diorama`、D1 数据库 `diorama`、R2 存储桶 `diorama-files`）。
+
 别人打开链接就能用：上传自己的房间照片生成 3D 房间、生成家具、保存空间。和本机版是同一套代码，`DIORAMA_PUBLIC=1` 时进入公开模式（`lib/server/site.ts`）：
 
 - **访客**：不用注册。每位访客有一个随机编号，存在浏览器 Cookie 里，只能看到自己的空间和文件。
@@ -74,28 +76,9 @@ npm start
 
 本地先试生产构建：`npm run preview:cloud`，打开 <http://localhost:5192>。它在本机的 Workers 运行时里跑，数据存在 `.wrangler/cloud-preview`，不碰本机版的数据；构建时会删掉 Cloudflare 插件复制过来的 `.dev.vars`，所以预览里不会真的花积分。
 
-## 在线演示版（Vercel）
+## 只读演示版（不需要服务器）
 
-不用安装，打开网址就能体验示例卧室。在线版是同一套页面的静态构建，没有服务器：页面的接口在浏览器里运行（`lib/demo-backend.ts`），空间和照片存在访问者自己浏览器的 IndexedDB 里，房间文件直接从 World Labs 的 CDN 读取。不调用任何付费接口，也不需要密钥。
-
-- **能做**：打开示例卧室（Marble 1.1 房间）；打开“挪动原家具”点床，擦掉原来的床、放回床模型；添加示例吊灯并挂到天花板；家具库全部商品、叠放、“帮我找”、价格和官网链接；保存、改名、删除空间；中英文切换。首页的“看示例卧室”，以及编辑面板和添加家具里的“用示例……照片”按钮，直接用 `public/demo/samples/` 里的照片，不用自己找文件。
-- **不能做**：用其他照片生成房间或家具、导入 Marble 链接、本机识别和背景修复。页面会提示“在线演示版只能体验示例卧室”，完整功能请在本地运行。
-
-部署（`vercel.json` 已写好构建命令和输出目录，Framework Preset 选 **Other**，不用改任何设置）：
-
-- 在 Vercel 网站 **Add New → Project** 导入这个 GitHub 仓库；或者
-- 在项目目录执行 `npx vercel`（登录由你自己完成），确认无误后 `npx vercel --prod`。`.vercelignore` 保证 `.dev.vars`、`.wrangler/` 等本机文件不会被上传。
-
-本地预览在线版：
-
-```bash
-npm run build:demo
-npm run demo:preview
-```
-
-然后打开 <http://localhost:5191>。构建产物在 `dist-demo/`（约 16 MB，含家具库模型、示例床和吊灯）。
-
-注意：在线版是公开网页，家具库的产品图和吊灯示例照片来自品牌官网（见 `docs/SOURCES.md`），公开前请确认使用范围。
+`npm run build:demo` 构建一个纯静态版本（`dist-demo/`，约 16 MB）：接口在浏览器里运行（`lib/demo-backend.ts`），数据存在访客自己的浏览器里，只能体验示例卧室、示例床和吊灯、家具库，不能用自己的照片生成。可以放在任何静态托管上；本地预览：`npm run demo:preview`，然后打开 <http://localhost:5191>。
 
 ## 主要功能
 
@@ -179,7 +162,7 @@ npm run lint
 - `lib/credits.ts`：每次生成预计花费的积分。
 - `app/api/workbench/route.ts`：本地服务端接口（空间、上传、生成任务、家具库）。
 - `lib/server/site.ts`、`build/worker.ts`、`wrangler.cloud.jsonc`：公开网站（访客编号、每日额度、全站上限、云端配置）。
-- `demo/`、`vite.demo.config.ts`、`lib/demo-backend.ts`、`vercel.json`：在线演示版（静态页面、浏览器里的接口、Vercel 设置）。`lib/asset-url.ts` 决定文件从哪里读取（本地服务或在线版的 CDN / 浏览器）。
+- `demo/`、`vite.demo.config.ts`、`lib/demo-backend.ts`：只读演示版（静态页面、浏览器里的接口）。`lib/asset-url.ts` 决定文件从哪里读取（本地服务或在线版的 CDN / 浏览器）。
 - `lib/server/`：任务、预算、服务商调用、存储。
 - `build/local-*-plugin.mjs`：只允许本机访问的辅助服务（本地模型、模型压缩、代理转发）。
 - `lib/catalog.json`：家具库数据，价格与链接来源见 `docs/SOURCES.md`。

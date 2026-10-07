@@ -1,4 +1,4 @@
-// The online demo (npm run build:demo, deployed to Vercel): the same page as the local app, with its
+// The read-only demo (npm run build:demo, any static host): the same page as the local app, with its
 // API answered in the browser (lib/demo-backend.ts) instead of by the local server.
 import "@fontsource-variable/fraunces/full.css";
 import "@fontsource-variable/fraunces/full-italic.css";

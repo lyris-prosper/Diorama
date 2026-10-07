@@ -84,7 +84,7 @@ Safari 17（macOS 14.5，Apple M3 上实测）的 JavaScriptCore 在两个 Web W
 
 ## 在线演示版（`demo/`、`lib/demo-backend.ts`）
 
-部署到 Vercel 的是同一套页面的静态构建（`vite.demo.config.ts`，输出 `dist-demo/`），没有服务器。
+同一套页面的纯静态构建（`vite.demo.config.ts`，输出 `dist-demo/`），没有服务器，可以放在任何静态托管上。
 
 - **接口**：`demo/main.tsx` 先装上 `installDemoBackend()`，它接管页面对同源 `/api/*` 的 `fetch`：`/api/workbench` 由 `createDemoServer` 在浏览器里回答，规则从服务端搬过来（保存校验、演示卧室、床和吊灯复用、家具库摆放、擦除框）；凡是要付费或要本机服务的操作（生成、导入、识别、修复）一律返回“在线演示版只能体验示例卧室”。其他 `/api/*` 返回 404。
 - **数据**：空间和上传的照片存在访问者浏览器的 IndexedDB（`diorama-demo`），只属于这个浏览器。

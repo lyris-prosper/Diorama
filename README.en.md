@@ -44,6 +44,8 @@ To open one space directly, e.g. to rehearse or record a demo: `http://localhost
 
 ## Public website (Cloudflare, real generation)
 
+Live at <https://diorama.3dspace.workers.dev> (Worker `diorama`, D1 database `diorama`, R2 bucket `diorama-files`).
+
 Anyone with the link can use it: upload their own room photo, generate the 3D room and furniture, and keep their spaces. It is the same code as the Mac version; `DIORAMA_PUBLIC=1` switches on the public mode (`lib/server/site.ts`):
 
 - **Visitors**: no sign-up. Each visitor gets a random id in a browser cookie and sees only their own spaces and files.
@@ -76,28 +78,9 @@ First deployment:
 
 To try the production build first: `npm run preview:cloud`, then open <http://localhost:5192>. It runs in the Workers runtime on this Mac with its data in `.wrangler/cloud-preview`, apart from the Mac version's; the build removes the `.dev.vars` copy the Cloudflare plugin makes, so a preview never spends credits.
 
-## Online demo (Vercel)
+## Read-only demo (no server)
 
-Nothing to install: open the address and try the sample bedroom. The online demo is a static build of the same page with no server behind it. The page's API runs in the browser (`lib/demo-backend.ts`), spaces and photos stay in the visitor's own browser (IndexedDB), and the room files are read straight from World Labs' CDN. Nothing paid is ever called, and no keys are needed.
-
-- **Works**: the sample bedroom (a Marble 1.1 room); turn on "Move room furniture", click the bed, erase it and put the bed model back; add the sample pendant and hang it from the ceiling; the whole furniture library with stacking, *Find me*, prices and shop links; save, rename and delete spaces; both languages. "See the sample bedroom" on the home page and the "Use the sample … photo" buttons in the edit panel and in Add furniture use the photos in `public/demo/samples/`, so there is nothing to look for.
-- **Doesn't**: rooms or furniture from other photos, Marble link imports, on-device recognition and background repair. The page says the online demo runs the sample bedroom only; run it locally for everything.
-
-To deploy (`vercel.json` already sets the build command and output folder; choose the **Other** framework preset and change nothing):
-
-- On the Vercel website, **Add New → Project** and import this GitHub repository; or
-- run `npx vercel` in the project folder (you sign in yourself), then `npx vercel --prod` when the preview looks right. `.vercelignore` keeps `.dev.vars`, `.wrangler/` and the other local files from being uploaded.
-
-To preview the online demo locally:
-
-```bash
-npm run build:demo
-npm run demo:preview
-```
-
-Then open <http://localhost:5191>. The build goes to `dist-demo/` (about 16 MB, with the library models, the sample bed and the pendant).
-
-Note: the online demo is public. The library's product pictures and the sample pendant photo come from brand websites (see `docs/SOURCES.md`); check you may show them before publishing.
+`npm run build:demo` makes a purely static version (`dist-demo/`, about 16 MB): its API runs in the browser (`lib/demo-backend.ts`) and data stays in the visitor's browser. It shows the sample bedroom, the sample bed and pendant and the library, but can't generate from your own photos. Any static host can serve it; to preview it locally, run `npm run demo:preview` and open <http://localhost:5191>.
 
 ## Features
 
@@ -181,7 +164,7 @@ npm run lint
 - `lib/credits.ts`: estimated credits per generation.
 - `app/api/workbench/route.ts`: the local server API (spaces, uploads, generation jobs, library).
 - `lib/server/site.ts`, `build/worker.ts`, `wrangler.cloud.jsonc`: the public website (visitor ids, daily allowance, site caps, cloud settings).
-- `demo/`, `vite.demo.config.ts`, `lib/demo-backend.ts`, `vercel.json`: the online demo (static page, the API in the browser, Vercel settings). `lib/asset-url.ts` decides where files are read from (the local server, or the CDN and the browser online).
+- `demo/`, `vite.demo.config.ts`, `lib/demo-backend.ts`: the read-only demo (static page, the API in the browser). `lib/asset-url.ts` decides where files are read from (the local server, or the CDN and the browser online).
 - `lib/server/`: jobs, budget, provider calls, storage.
 - `build/local-*-plugin.mjs`: helper services reachable only from this Mac (local models, model compression, proxy relay).
 - `lib/catalog.json`: library data; sources of prices and links in `docs/SOURCES.md`.

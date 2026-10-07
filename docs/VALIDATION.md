@@ -29,20 +29,20 @@
 - 上传一张非示例照片：生成按钮显示“免费，今天还能生成 1 个”；因为没有密钥，按钮停用并说明原因；自动识别被跳过并给出在线版说明，没有报错。
 - 本机版 `localhost:5173` 照旧：没有 Cookie，「我的空间」正常列出，本机模型可用。
 
-## 2026-10-07：在线演示版（Vercel 静态构建）
+## 2026-10-07：只读演示版（静态构建）
 
-全程 0 积分，没有调用任何付费接口。尚未真正部署到 Vercel（由用户自己部署）。
+全程 0 积分，没有调用任何付费接口。后来公开网站部署在 Cloudflare，这个静态版没有上线。
 
 ### 离线测试
 
 - 新增 `tests/demo-backend.mjs`（5 项，用内存代替 IndexedDB）：示例卧室照片打开 Marble 1.1 房间；床照片复用床模型并放回原位、擦除原床；吊灯照片复用模型并进家具栏，其他照片被拒绝；家具库、保存（含吊挂）、改名；其他房间照片、生成、导入、识别都被拒绝，被拒的照片不留下空间和文件。网络调用 0 次。
 - 全部 `npm test`、`typecheck`、`scan` 通过；`lint` 0 个错误。
 
-### 干净环境构建（模拟 Vercel）
+### 干净环境构建
 
 - 只复制 git 会提交的文件（不含 `demo-video/`）到临时目录，执行 `npm ci --ignore-scripts`（676 个包，8 秒）和 `npm run build:demo`（不到 1 秒），得到 `dist-demo/` 16 MB。
-- 删掉 `public/vision/` 和 `resources/` 后再构建一次，结果相同：在线版不需要它们，`.vercelignore` 里把 `public/vision/` 排除在上传之外。
-- `package-lock.json` 里有 Linux 版的 rolldown 和 lightningcss，Vercel 的 Linux 构建机可以直接安装。
+- 删掉 `public/vision/` 和 `resources/` 后再构建一次，结果相同：在线版不需要它们。
+- `package-lock.json` 里有 Linux 版的 rolldown 和 lightningcss，Linux 构建机可以直接安装。
 
 ### 浏览器实测（内置 Chromium，`npm run demo:preview`，端口 5191）
 
@@ -68,7 +68,7 @@
 
 ### 未执行
 
-- 真正部署到 Vercel 后的线上访问。
+- 部署到静态托管后的线上访问（没有上线）。
 - 在线版在 Safari 和手机上的表现。
 
 ## 2026-10-06（第三轮）：Safari、吊灯演示素材、英文 README

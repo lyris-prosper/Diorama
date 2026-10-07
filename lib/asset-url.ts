@@ -9,7 +9,7 @@ export const setAssetResolver = (r: ((key: string) => string | null) | null) => 
 export const assetUrl = (key?: string | null) =>
   !key ? "" : key.startsWith("/") ? key : (resolver?.(key) ?? "/api/assets?key=" + encodeURIComponent(key));
 
-/** The online demo (Vercel): the page runs without the local server and its paid services. */
+/** The read-only demo (static build): the page runs without a server and its paid services. */
 export const isOnlineDemo = () => typeof window !== "undefined" && !!(window as { __DIORAMA_ONLINE__?: boolean }).__DIORAMA_ONLINE__;
 
 /** The demo photos (resources/demo/, copied to public/demo/samples/), as files the page can upload. */

@@ -1,4 +1,4 @@
-// The online demo (Vercel) has no server: the page's /api/workbench and /api/assets requests are
+// The read-only demo (static build) has no server: the page's /api/workbench and /api/assets requests are
 // answered here, in the browser. Spaces and uploaded photos stay in this browser (IndexedDB). The
 // sample bedroom loads from Marble's public CDN and its bed and pendant from public/demo/; nothing
 // is generated and no provider is called. A room or new furniture from other photos needs the full

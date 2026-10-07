@@ -1,4 +1,4 @@
-// The online demo: a static build of the page for Vercel (npm run build:demo → dist-demo/). No
+// The read-only demo: a static build of the page for any static host (npm run build:demo → dist-demo/). No
 // server: the page's API runs in the browser (lib/demo-backend.ts). Only the public files the demo
 // uses are copied; the local recognition models (public/vision, 81 MB) stay out.
 import { cpSync, mkdirSync } from "node:fs";

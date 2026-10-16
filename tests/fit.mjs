@@ -127,4 +127,34 @@ check('the longer typed side follows the longer side of the model',()=>{
   const f=M.fitScale([1.4,0.55,1.0],{w:150,d:200,h:80});
   assert.equal(f.swap,true);near(f.scale[0],2/1.4,1e-9);near(f.scale[2],1.5,1e-9);
 });
+check('free places for “帮我布置”: floor by a wall, a flat top, a wall facing the viewer',()=>{
+  const grid=P.buildRoomGrid(scan,{scale:1,offset:0,floorY:0,half:3.5,ceilingY:CEIL});
+  const hm=P.heightMap(grid,[]);
+  const eye={x:0.3,z:2.2,fx:0,fz:-1},heading=P.wallHeading(scan,{scale:1,offset:0,floorY:0,half:3.5});
+  const square=(t)=>{const q=((t-heading)%(Math.PI/2)+Math.PI/2)%(Math.PI/2);assert(Math.min(q,Math.PI/2-q)<1e-6,'square with the walls')};
+  // Inside the bed or the desk (with a margin of the piece's half size)?
+  const inBed=(x,z,m)=>x>BED.cx-BED.w/2-m&&x<BED.cx+BED.w/2+m&&z>BED.cz-BED.d/2-m&&z<BED.cz+BED.d/2+m;
+  const inDesk=(x,z,m)=>{const dx=x-DESK.cx,dz=z-DESK.cz,c=Math.cos(DESK.rot),s=Math.sin(DESK.rot);return Math.abs(dx*c-dz*s)<DESK.w/2+m&&Math.abs(dx*s+dz*c)<DESK.d/2+m;};
+  const plant=P.autoSpot(hm,{zone:'floor',size:[0.45,0.45,1.2],heading,eye,taken:[]});
+  assert(plant,'a floor place');
+  const [x,y,z]=plant.position;
+  near(y,0,1e-9,'on the floor');square(plant.rotation);
+  assert(!inBed(x,z,0.2)&&!inDesk(x,z,0.2),`clear of the bed and the desk: ${x.toFixed(2)}, ${z.toFixed(2)}`);
+  assert(Math.min(z+3,x+2.5)<0.65,`its back to a wall: ${x.toFixed(2)}, ${z.toFixed(2)}`);
+  // Its front faces into the room, away from that wall.
+  const front=[Math.sin(plant.rotation),Math.cos(plant.rotation)];
+  assert(z+3<x+2.5?front[1]>0.9:front[0]>0.9,'facing into the room');
+  const second=P.autoSpot(hm,{zone:'floor',size:[0.45,0.45,1.2],heading,eye,taken:[{x,z,r:0.3}]});
+  assert(second&&Math.hypot(second.position[0]-x,second.position[2]-z)>0.5,'a place once given is not given again');
+  const lamp=P.autoSpot(hm,{zone:'top',size:[0.2,0.2,0.3],heading,eye,taken:[]});
+  assert(lamp,'a top');
+  assert(Math.abs(lamp.position[1]-0.75)<0.06||Math.abs(lamp.position[1]-0.55)<0.06,`on the desk or the bed: ${lamp.position[1].toFixed(2)}`);
+  assert(inBed(lamp.position[0],lamp.position[2],0)||inDesk(lamp.position[0],lamp.position[2],0),'over the desk or the bed');
+  const art=P.autoSpot(hm,{zone:'wall',size:[0.5,0.04,0.4],heading,eye,taken:[]});
+  assert(art,'a wall');
+  near(art.position[1],1.25,0.01,'hung with its middle 1.45 m up');
+  assert(Math.min(art.position[2]+3,art.position[0]+2.5)<0.15,'against a wall: '+art.position.map(v=>v.toFixed(2)));
+  // Nothing fits a piece wider than any free floor.
+  assert.equal(P.autoSpot(hm,{zone:'floor',size:[6,6,1],heading,eye,taken:[]}),null);
+});
 console.log(`PASS ${n} fitting checks`);

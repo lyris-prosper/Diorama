@@ -10,7 +10,7 @@
     "dev": "node scripts/start-local.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs && node tests/fit.mjs && node tests/demo-backend.mjs && node tests/public-site.mjs && node tests/i18n.mjs",
+    "test": "node tests/provider-workflow.mjs && node tests/furniture-workflow.mjs && node tests/project-workflow.mjs && node tests/catalog-search.mjs && node tests/placement.mjs && node tests/fit.mjs && node tests/demo-backend.mjs && node tests/public-site.mjs && node tests/arrange.mjs && node tests/i18n.mjs",
     "scan": "node scripts/security-scan.mjs",
     "catalog": "node scripts/build-catalog.mjs",
     "build:demo": "vite build --config vite.demo.config.ts",
@@ -23,8 +23,8 @@
     "db:local": "wrangler d1 migrations apply DB --local --config wrangler.local.json --persist-to .wrangler/state"
   },
   "dependencies": {
-    "@fontsource-variable/figtree": "^5.3.0",
     "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/noto-serif-sc": "^5.3.0",
     "@huggingface/transformers": "^3.8.1",
     "@sparkjsdev/spark": "^2.3.1",
     "class-variance-authority": "0.7.1",

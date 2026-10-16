@@ -368,6 +368,120 @@ export function roomBelow(g: RoomGrid, x: number, z: number, y: number, boxes: E
   return g.floorY;
 }
 
+// ———————————————————————————————————————— free places (“帮我布置” in any room)
+
+/** Per grid column: the surface height above the floor (under 2 m), and whether it is wall-like. */
+export type HeightMap = { g: RoomGrid; h: Float32Array; wall: Uint8Array };
+/** The room scan seen from above, for finding free places; about 30 ms for a 10 m grid. */
+export function heightMap(g: RoomGrid, boxes: EraseBox[]): HeightMap {
+  const h = new Float32Array(g.nx * g.nz),
+    wall = new Uint8Array(g.nx * g.nz);
+  const bins = [1.15, 1.35, 1.55].map((y) => Math.floor((g.floorY + y - g.y0) / g.bin)).filter((k) => k < g.ny);
+  for (let iz = 0; iz < g.nz; iz++)
+    for (let ix = 0; ix < g.nx; ix++) {
+      const c = iz * g.nx + ix,
+        x = g.x0 + (ix + 0.5) * g.cell,
+        z = g.z0 + (iz + 0.5) * g.cell;
+      h[c] = roomBelow(g, x, z, g.floorY + 2, boxes) - g.floorY;
+      let n = 0;
+      for (const k of bins) if (g.occ[c * g.ny + k] && !erased(x, binY(g, k), z, boxes)) n++;
+      wall[c] = n >= 2 ? 1 : 0;
+    }
+  return { g, h, wall };
+}
+export type SpotQuery = {
+  zone: "floor" | "top" | "wall";
+  /** The piece's width, depth and height in metres. */
+  size: [number, number, number];
+  /** The walls' turn (wallHeading), or null. */
+  heading: number | null;
+  /** Where the viewer stands and looks (x, z and a horizontal direction). */
+  eye: { x: number; z: number; fx: number; fz: number };
+  /** Places already given out: centre and radius. */
+  taken: { x: number; z: number; r: number }[];
+};
+/**
+ * A free place for a piece where the viewer can see it: on free floor with its back to a wall, on a
+ * flat top 0.4–0.95 m high, or on a wall facing the viewer, 1.45 m up at its middle. Turned square
+ * with the walls, its front (+z) towards the room. null when nothing fits.
+ */
+export function autoSpot(m: HeightMap, q: SpotQuery): { position: [number, number, number]; rotation: number } | null {
+  const { g } = m,
+    [w, d, ht] = q.size;
+  const col = (x: number, z: number) => cellOf(g, x, z);
+  const heightAt = (x: number, z: number) => {
+    const c = col(x, z);
+    return c < 0 ? Infinity : m.h[c];
+  };
+  const wallAt = (x: number, z: number) => {
+    const c = col(x, z);
+    return c < 0 || m.wall[c] === 1 || m.h[c] > 1.6;
+  };
+  const base = q.heading ?? 0,
+    flen = Math.hypot(q.eye.fx, q.eye.fz) || 1,
+    fx = q.eye.fx / flen,
+    fz = q.eye.fz / flen;
+  let best: { score: number; x: number; z: number; y: number; t: number } | null = null;
+  for (let iz = 0; iz < g.nz; iz += 2)
+    for (let ix = 0; ix < g.nx; ix += 2) {
+      const x = g.x0 + (ix + 0.5) * g.cell,
+        z = g.z0 + (iz + 0.5) * g.cell;
+      const vx = x - q.eye.x,
+        vz = z - q.eye.z,
+        dist = Math.hypot(vx, vz);
+      if (dist < 1.4 || dist > 5) continue;
+      const seen = (vx * fx + vz * fz) / dist;
+      if (seen < Math.cos(40 * DEG)) continue;
+      if (q.taken.some((t) => Math.hypot(x - t.x, z - t.z) < t.r + Math.max(w, d) / 2)) continue;
+      for (let k = 0; k < 4; k++) {
+        const t = base + (k * Math.PI) / 2;
+        // A piece turned by t: its x axis along (cos t, −sin t), its front (z) along (sin t, cos t).
+        const ax = Math.cos(t),
+          az = -Math.sin(t),
+          bx = Math.sin(t),
+          bz = Math.cos(t);
+        const toEye = (-vx * bx - vz * bz) / dist;
+        // Sample the footprint every 10 cm.
+        const under: number[] = [];
+        for (let a = -w / 2; a <= w / 2 + 1e-6; a += Math.min(0.1, w / 2 || 0.1))
+          for (let b = -d / 2; b <= d / 2 + 1e-6; b += Math.min(0.1, d / 2 || 0.1)) under.push(heightAt(x + ax * a + bx * b, z + az * a + bz * b));
+        // A wall behind, within 35 cm of the back edge.
+        let back: number | null = null;
+        for (let s = 0; s <= 0.35; s += 0.05)
+          if (wallAt(x - bx * (d / 2 + s), z - bz * (d / 2 + s))) {
+            back = s;
+            break;
+          }
+        let score: number, y: number;
+        if (q.zone === "floor") {
+          if (under.some((v) => v > 0.04) || wallAt(x, z)) continue;
+          score = (back !== null ? 1.6 - back * 3 : 0) + toEye * 0.6 + seen * 0.4 - Math.abs(dist - 2.8) * 0.15;
+          y = g.floorY;
+        } else if (q.zone === "top") {
+          const h0 = heightAt(x, z);
+          if (h0 < 0.38 || h0 > 0.95 || under.some((v) => Math.abs(v - h0) > 0.04)) continue;
+          score = toEye * 0.8 + seen * 0.6 - Math.abs(h0 - 0.75) * 0.5 - Math.abs(dist - 2.5) * 0.1;
+          y = g.floorY + h0;
+        } else {
+          // On a wall: the wall right behind across the piece's width, free in front at hanging height,
+          // and nothing beyond it (a curtain hangs in front of a wall; a wall is the room's edge).
+          if (back === null || back > 0.1 || toEye < 0.3 || heightAt(x, z) > 1.2) continue;
+          const bx2 = x - bx * (d / 2 + back + 0.25),
+            bz2 = z - bz * (d / 2 + back + 0.25),
+            beyond = col(bx2, bz2);
+          if (beyond >= 0 && (m.wall[beyond] === 1 || m.h[beyond] > 0.05)) continue;
+          let along = 0;
+          for (let a = -w / 2; a <= w / 2 + 1e-6; a += Math.min(0.1, w / 2 || 0.1)) if (wallAt(x + ax * a - bx * (d / 2 + 0.12), z + az * a - bz * (d / 2 + 0.12))) along++;
+          if (along < Math.max(2, Math.round(w / 0.1) * 0.8)) continue;
+          score = toEye + seen * 0.5 - Math.abs(dist - 3) * 0.1;
+          y = g.floorY + 1.45 - ht / 2;
+        }
+        if (!best || score > best.score) best = { score, x, z, y, t };
+      }
+    }
+  return best && { position: [best.x, best.y, best.z], rotation: best.t };
+}
+
 // ———————————————————————————————————————— placed furniture (meshes)
 
 const _n = new THREE.Vector3(),

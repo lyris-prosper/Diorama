@@ -39,6 +39,9 @@ import {
   Sparkles,
   Lamp,
   Hand,
+  LayoutGrid,
+  Activity,
+  Rotate3d,
 } from "lucide-react";
 import { MAX_ITEMS, type Project, type Item, type Branch, type Candidate, type Task, type Erasure, type Dims, type PublicSite } from "@/lib/types";
 import { availabilityLabel, buyNoteText, catalogItem, dimsText, formatOriginal, formatPrice, formatUSD, itemName, marketLabel, variantText } from "@/lib/catalog";
@@ -56,6 +59,9 @@ import FurnitureInputs from "./FurnitureInputs";
 import type { FloorFit, PlacementApi } from "./Scene";
 import type { FittedBox } from "@/lib/fit-box";
 import SpacesDialog, { type SpaceSummary } from "./SpacesDialog";
+import ShoppingList from "./ShoppingList";
+import ArrangePanel from "./ArrangePanel";
+import type { Plan } from "@/lib/arrange";
 import {
   prepareImages,
   canvas,
@@ -72,7 +78,7 @@ function CanvasLoading() {
   );
 }
 const Scene = dynamic(() => import("./Scene"), { ssr: false, loading: () => <CanvasLoading /> });
-const TITLE = { zh: "方寸 · 不用搬，就能换个摆法", en: "Diorama — Rearrange your room" };
+const TITLE = { zh: "方寸 · 摆出心里的家", en: "Diorama — Rearrange your room" };
 function Mark() {
   // An isometric room corner: two walls and a floor, as on a model board.
   return (
@@ -235,7 +241,12 @@ export default function Workbench() {
     [thumbs, setThumbs] = useState<Record<string, string>>({}),
     [reset, setReset] = useState(0),
     [focus, setFocus] = useState(0),
-    [reference, setReference] = useState(true),
+    [reference, setReference] = useState(false),
+    [sheet, setSheet] = useState({ shelf: false, library: true, edit: false }),
+    [arrangeOpen, setArrangeOpen] = useState(false),
+    [arranging, setArranging] = useState(false),
+    [arranged, setArranged] = useState<{ plan: Plan; ids: string[]; asked: string } | null>(null),
+    [before, setBefore] = useState(false),
     [history, setHistory] = useState<Item[][]>([]),
     [future, setFuture] = useState<Item[][]>([]),
     [dirty, setDirty] = useState(false),
@@ -790,6 +801,10 @@ export default function Workbench() {
   // The library needs somewhere to put things: the demo room or a generated/imported room.
   const libraryOpen = !!p && (p.mode === "demo" || !!p.room);
   const tab = panel === "library" && libraryOpen ? "library" : "shelf";
+  // Phone sheet, per panel: the library starts up, the shelf and the edit form down; it always lets
+  // the room show while a piece is being placed or a room piece was just clicked.
+  const sheetKey = editDraft ? "edit" : tab;
+  const sheetUp = sheet[sheetKey] && !pending && !roomPick;
   const inRoom: Record<string, number> = {};
   for (const i of p?.items ?? []) if (i.catalogId) inRoom[i.catalogId] = (inRoom[i.catalogId] ?? 0) + 1;
   const running = p?.tasks.some((t) =>
@@ -1191,6 +1206,66 @@ export default function Workbench() {
       setPending(next.added);
     } else setToast(t(`「${entry ? itemName(entry, lang) : ""}」已放进家具栏，地面对齐后就能摆放。`, `“${entry ? itemName(entry, lang) : ""}” is on the shelf. Place it once the floor is set.`));
   }
+  // “帮我布置”: the server picks the pieces (and, in the sample bedroom, their hand-set places); the
+  // room scan gives the others a free place in view. They arrive together in one request, appear one
+  // by one, and leave together as one step of the history.
+  async function arrange(sentence: string) {
+    const cur = stateRef.current;
+    if (!cur) return;
+    if (!cur.floor.confirmed) {
+      setFloorOpen(true);
+      return;
+    }
+    setArranging(true);
+    setError("");
+    setSelected(null);
+    setPending(null);
+    try {
+      const plan = (await api({ action: "plan-layout", id: cur.id, text: sentence })) as Plan;
+      const spots = cur.room?.preset === DEMO_ROOM.id ? DEMO_ROOM.spots : null;
+      if (spots) setReset((v) => v + 1);
+      const taken: { x: number; z: number; r: number }[] = [];
+      const kept: Plan["items"] = [];
+      const items = plan.items.flatMap((it) => {
+        const spot = spots?.find((x) => x.id === it.spot);
+        const c = catalogItem(it.catalogId);
+        const size = c?.modelSize ?? c?.dims;
+        const at = spot ?? (size ? placement.current?.spot(it.zone, [size.w / 100, size.d / 100, size.h / 100], taken) : null);
+        if (!at || !size) return [];
+        taken.push({ x: at.position[0], z: at.position[2], r: Math.max(size.w, size.d) / 200 });
+        kept.push(it);
+        return [{ catalogId: it.catalogId, position: at.position, rotation: at.rotation }];
+      });
+      if (!items.length) {
+        setToast(t("房间里暂时找不到空位了，先收回几件再试。", "No free place left in view. Put a few pieces away and try again."));
+        return;
+      }
+      const next = await api({ action: "add-catalog-item", id: cur.id, items });
+      const ids = [next.added ?? []].flat() as string[];
+      const fresh = (next.items as Item[]).filter((i) => ids.includes(i.id));
+      const before = stateRef.current?.items ?? cur.items;
+      setHistory((h) => [...h.slice(-39), structuredClone(before)]);
+      setFuture([]);
+      fresh.forEach((it, k) =>
+        setTimeout(
+          () => setP((c) => (c && c.id === next.id ? { ...c, ...(k === 0 ? { revision: next.revision, updatedAt: next.updatedAt } : {}), items: [...c.items, it] } : c)),
+          250 + k * 420,
+        ),
+      );
+      setArranged({ plan: { ...plan, items: kept, total: Math.round(kept.reduce((n, it) => n + (catalogItem(it.catalogId)?.price ?? 0), 0) * 100) / 100 }, ids, asked: sentence });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setArranging(false);
+    }
+  }
+  function undoArrange() {
+    setBefore(false);
+    if (!p || !arranged) return;
+    changeItems(p.items.filter((i) => !arranged.ids.includes(i.id)));
+    setArranged(null);
+    setSelected(null);
+  }
   // Empty-room base layer: shown inside erased areas so they show clean floor and wall.
   async function importClean() {
     if (!p) return;
@@ -1283,6 +1358,15 @@ export default function Workbench() {
       </button>
     </div>
   );
+  // On a phone the furniture column is a sheet under the room: the handle pulls it up or lets it down.
+  const sheetHandle = (
+    <button
+      className="sheet-handle"
+      aria-label={sheetUp ? t("收起面板", "Lower the panel") : t("展开面板", "Raise the panel")}
+      aria-expanded={sheetUp}
+      onClick={() => setSheet((v) => ({ ...v, [sheetKey]: !sheetUp }))}
+    />
+  );
   const importBlock = (
     <div className="import-world">
       <label className="field-label" htmlFor="marble-source">
@@ -1316,35 +1400,35 @@ export default function Workbench() {
             )}
           </button>
           <LangToggle />
-          {p && (
-            <>
-              <span className="slash">/</span>
-              <span className="project-name">{spaceName(p.name, lang)}</span>
-            </>
-          )}
-          {p?.mode === "demo" && <span className="badge">{t("示例", "Sample")}</span>}
         </div>
+        {p && (
+          <nav className="top-nav" aria-label={t("当前位置", "Where you are")}>
+            <button onClick={goHome}>
+              <LayoutGrid size={16} />
+              {t("我的空间", "My spaces")}
+            </button>
+            <span className="on" aria-current="page">
+              <Box size={16} />
+              <span className="project-name">{spaceName(p.name, lang)}</span>
+              {p.mode === "demo" && <span className="badge">{t("示例", "Sample")}</span>}
+            </span>
+          </nav>
+        )}
         <div className="top-actions">
           {p ? (
             <>
               <span className="save-status">
                 {dirty ? t("有未保存的调整", "Unsaved changes") : savedAt ? t("已保存 ", "Saved ") + savedAt : t("已恢复空间", "Space restored")}
               </span>
-              <button className="icon" title={t("撤销", "Undo")} aria-label={t("撤销", "Undo")} disabled={!history.length} onClick={undo}>
-                <Undo2 />
-              </button>
-              <button className="icon" title={t("重做", "Redo")} aria-label={t("重做", "Redo")} disabled={!future.length} onClick={redo}>
-                <Redo2 />
-              </button>
-              <span className="divider" />
+              <ShoppingList items={p.items} onBrowse={libraryOpen ? () => setPanel("library") : undefined} />
               <button
-                className="button ghost"
+                className="button"
                 title={t("上传另一张照片，开始一个新空间（当前空间会保留）", "Upload another photo to start a new space (this one is kept)")}
                 onClick={() => fileRef.current?.click()}
                 disabled={busy || recognizing}
               >
                 <Upload size={16} />
-                {t("用新照片开始", "New photo")}
+                <span>{t("新照片", "New photo")}</span>
               </button>
               <button className="button primary" onClick={save} disabled={busy}>
                 <Save size={16} />
@@ -1375,70 +1459,435 @@ export default function Workbench() {
         }}
       />
       <section className={"workspace " + (!p ? "empty-workspace" : "") + (tab === "library" && !editDraft ? " library-open" : "") + (pickMode && !editDraft ? " picking" : "")}>
-        {p && (p.mode === "demo" || p.room) ? (
-          <Scene
-            project={p}
-            selected={selected}
-            pending={pending}
-            reset={reset}
-            focus={focus}
-            onSelect={(id) => {
-              setSelected(id);
-              setRoomPick(null);
-            }}
-            onMoveMany={moveMany}
-            onAdjust={adjust}
-            onEngine={(api) => (placement.current = api)}
-            onHint={setToast}
-            onPlace={place}
-            onThumb={thumb}
-            onError={setError}
-            onFloorDetected={floorDetected}
-            floorEditing={floorOpen}
-            onRoomPick={pickRoom}
-            pickEnabled={pickMode && !editDraft}
-            eraseDraft={editDraft?.erase ?? null}
-            onDraftMove={(c) => setEditDraft((cur) => (cur ? { ...cur, erase: { ...cur.erase, center: c } } : cur))}
-            onCleanAligned={(fit) => void saveCleanAlign(fit, t("空房间底图已自动对齐，擦除的地方会用它补齐。", "The empty-room layer is aligned; erased areas are filled from it."))}
-          />
-        ) : p?.original ? (
-          <div className="photo-stage">
-            <img src={url(p.original)} alt={t("上传的房间原图", "The uploaded room photo")} />
-            <span>{t("原始照片 · 空间尚未生成", "Original photo · no 3D room yet")}</span>
-          </div>
-        ) : null}
         {p && (
-          <div className="workspace-label">
-            <h1>{spaceName(p.name, lang)}</h1>
-            <p>
-              {p.mode === "demo"
-                ? t("示例房间 · 几何模型，只用于体验摆放", "Sample room · simple shapes, to try placing")
-                : p.room?.preset
-                  ? t("Marble 1.1 房间 · 照片没拍到的地方为推测补全", "Marble 1.1 room · areas the photo didn't show are inferred")
-                  : p.room
-                    ? t("生成式空间 · 照片没拍到的地方为推测补全", "Generated room · areas the photo didn't show are inferred")
-                    : t("照片已上传 · 3D 空间还没有生成", "Photo uploaded · the 3D room isn't generated yet")}
-            </p>
+          <div className="stage">
+          {p && (p.mode === "demo" || p.room) ? (
+            <Scene
+              project={p}
+              selected={selected}
+              pending={pending}
+              reset={reset}
+              focus={focus}
+              onSelect={(id) => {
+                setSelected(id);
+                setRoomPick(null);
+              }}
+              onMoveMany={moveMany}
+              onAdjust={adjust}
+              onEngine={(api) => (placement.current = api)}
+              onHint={setToast}
+              onPlace={place}
+              onThumb={thumb}
+              onError={setError}
+              onFloorDetected={floorDetected}
+              floorEditing={floorOpen}
+              onRoomPick={pickRoom}
+              pickEnabled={pickMode && !editDraft}
+            hidden={before && arranged ? arranged.ids : undefined}
+              eraseDraft={editDraft?.erase ?? null}
+              onDraftMove={(c) => setEditDraft((cur) => (cur ? { ...cur, erase: { ...cur.erase, center: c } } : cur))}
+              onCleanAligned={(fit) => void saveCleanAlign(fit, t("空房间底图已自动对齐，擦除的地方会用它补齐。", "The empty-room layer is aligned; erased areas are filled from it."))}
+            />
+          ) : p?.original ? (
+            <div className="photo-stage">
+              <img src={url(p.original)} alt={t("上传的房间原图", "The uploaded room photo")} />
+              <span>{t("原始照片 · 空间尚未生成", "Original photo · no 3D room yet")}</span>
+            </div>
+          ) : null}
+          {p && !arrangeOpen && (
+            <div className="workspace-label">
+              <h1>{spaceName(p.name, lang)}</h1>
+              <p>
+                {p.mode === "demo"
+                  ? t("示例房间 · 几何模型，只用于体验摆放", "Sample room · simple shapes, to try placing")
+                  : p.room?.preset
+                    ? t("Marble 1.1 房间 · 照片没拍到的地方为推测补全", "Marble 1.1 room · areas the photo didn't show are inferred")
+                    : p.room
+                      ? t("生成式空间 · 照片没拍到的地方为推测补全", "Generated room · areas the photo didn't show are inferred")
+                      : t("照片已上传 · 3D 空间还没有生成", "Photo uploaded · the 3D room isn't generated yet")}
+              </p>
+            </div>
+          )}
+          {p?.mode === "real" && p.room && p.room.source !== "imported" && draftNoteClosed !== p.id && !editDraft && !pending && !pickMode && (
+            <div className="draft-note" role="note">
+              <strong>{t("这是草稿版房间", "This is a draft room")}</strong>
+              <span>
+                {t(
+                  "想要更清晰逼真的效果，可以去 Marble 官网用 Marble 1.1 模型生成同一张照片，再导入替换（不消耗本工作台积分）。",
+                  "For a sharper, more lifelike room, generate the same photo with Marble 1.1 on the Marble website, then import it here (no credits from this app).",
+                )}
+              </span>
+              <a className="text-button" href={MARBLE} target="_blank" rel="noopener noreferrer">
+                {t("去 Marble 官网", "Open Marble")} <ArrowUpRight size={13} />
+              </a>
+              <button className="text-button" onClick={() => { setDrawer(true); setImportOpen(true); }}>
+                {t("导入房间", "Import room")}
+              </button>
+              <button className="icon" aria-label={t("关闭提示", "Dismiss")} onClick={() => setDraftNoteClosed(p.id)}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
+          {pickMode && p?.room && !roomPick && !editDraft && !pending && !item && (
+            <div className="placement-hint pick-hint">
+              <Hand size={16} />
+              {t("点房间里的家具，把它变成可以挪动的", "Click a piece in the room to make it movable")}
+              <button className="icon" onClick={() => setPickMode(false)} aria-label={t("关闭挪动原家具", "Turn off moving room furniture")}>
+                <X size={15} />
+              </button>
+            </div>
+          )}
+          {pending && (
+            <div className="placement-hint">
+              <Move size={17} />
+              {(() => {
+                const it = p?.items.find((i) => i.id === pending);
+                if (!it) return "";
+                return hangsFromCeiling(it)
+                  ? t(`对准天花板（或下面的地面）点击，挂上 ${displayName(it)}`, `Click the ceiling (or the floor under it) to hang ${displayName(it)}`)
+                  : t(`在地面或桌面上点击，放下 ${displayName(it)}`, `Click the floor or a tabletop to place ${displayName(it)}`);
+              })()}
+              <button
+                className="icon"
+                onClick={() => setPending(null)}
+                aria-label={t("取消放置", "Cancel placing")}
+              >
+                <X size={15} />
+              </button>
+            </div>
+          )}
+          {roomPick && (
+            <div className="pick-pop" style={{ left: roomPick.x, top: roomPick.y }} role="dialog" aria-label={t("把家具变成可编辑", "Make this piece movable")}>
+              <strong>{t("把它变成可编辑的家具？", "Make this piece movable?")}</strong>
+              <p>{t("上传这件家具的照片，会生成 3D 模型放回原处，之后就能挪动它。", "Upload a photo of it: a 3D model takes its place, and then you can move it.")}</p>
+              <div className="pick-actions">
+                <button className="button primary" onClick={startEdit}>
+                  {t("是，上传照片", "Yes, upload a photo")}
+                </button>
+                <button className="text-button" onClick={() => setRoomPick(null)}>
+                  {t("取消", "Cancel")}
+                </button>
+              </div>
+            </div>
+          )}
+          {p?.original && reference && (
+            <figure className="reference">
+              <img src={url(p.original)} alt={t("房间原图参考", "The room photo, for reference")} />
+              <figcaption>
+                <ImageIcon size={14} />
+                {t("原图", "Photo")}
+                <button className="icon" aria-label={t("收起原图", "Hide the photo")} onClick={() => setReference(false)}>
+                  <X size={14} />
+                </button>
+              </figcaption>
+            </figure>
+          )}
+          {item?.status === "placed" && p && (() => {
+            const entry = item.catalogId ? catalogItem(item.catalogId) : undefined;
+            const lift = Math.round((item.position[1] - p.floor.height) * 100);
+            const hangs = hangsFromCeiling(item);
+            const carried = new Set(hangs ? [] : (placement.current?.riders(item.id) ?? []));
+            // Raised or lowered, what stands on the piece goes with it.
+            const liftBy = (dy: number) =>
+              changeItems(p.items.map((i) => (i.id === item.id || carried.has(i.id) ? shifted(i, dy) : i)));
+            const raise = (cm: number) => liftBy(Math.max(p.floor.height, item.position[1] + cm / 100) - item.position[1]);
+            // Hung on a wall or left in mid-air: 落下 puts it on the desk, bed or floor under it.
+            const rest = placement.current?.restAt(item.position[0], item.position[2], item.position[1] + 0.02, [item.id, ...carried]) ?? p.floor.height;
+            const floating = !hangs && item.position[1] - rest > 0.04;
+            const shown = placement.current?.sizeOf(item.id) ?? null;
+            const resize = (data: Partial<Item>) => {
+              // A hanging piece keeps its top where it hangs from; a standing one its riders on its top.
+              if (hangs && data.scale !== undefined && shown) {
+                const h = shown.size[1],
+                  next = (h * data.scale) / item.scale;
+                patch(item.id, { ...data, position: [item.position[0], item.position[1] + h - next, item.position[2]] });
+                return;
+              }
+              placement.current?.carry(item.id);
+              patch(item.id, data);
+            };
+            const size = (v: number) => Math.round(v * item.scale);
+            const cm = (v: number) => Math.round(v * 100);
+            // Typed sizes as typed (and scaled); a model kept in its photo's proportions, as shown.
+            const sizeText =
+              item.dims && !shown?.uniform
+                ? `${size(item.dims.w)} × ${size(item.dims.d)} × ${size(item.dims.h)}`
+                : shown
+                  ? `${cm(shown.size[0])} × ${cm(shown.size[2])} × ${cm(shown.size[1])}`
+                  : "";
+            const original = item.model?.endsWith(".lite.glb") ? item.model.replace(/\.lite\.glb$/, ".glb") : null;
+            const generated = !!item.model && !item.model.startsWith("/") && !item.catalogId;
+            const canHang = hangs || ["pendant", "lamp", "other"].includes(item.kind);
+            return (
+              <div className="inspector glass">
+                <div className="inspector-head">
+                  <div className="inspector-name">
+                    <strong title={displayName(item)}>{displayName(item)}</strong>
+                    <span className="inspector-meta">
+                      {entry ? (
+                        <>
+                          {entry.shop} · <b>{formatPrice(entry)}</b>
+                          <span className="offer-tip" tabIndex={0} aria-label={t("标价详情", "Price details")}>
+                            <Info size={13} />
+                            <span className="offer-card glass" role="tooltip">
+                              {t(`${marketLabel(entry)}标价 ${formatOriginal(entry)}`, `${formatOriginal(entry)} on the ${marketLabel(entry, "en")}`)} · {variantText(entry, lang)}
+                              {availabilityLabel(entry, lang) && (
+                                <>
+                                  {" · "}
+                                  <em>{availabilityLabel(entry, lang)}</em>
+                                </>
+                              )}
+                              {buyNoteText(entry, lang) && ` · ${buyNoteText(entry, lang)}`}
+                              {entry.memberOffer && ` · ${lang === "en" ? entry.memberOffer.labelEn : entry.memberOffer.label} ${formatUSD(entry.memberOffer.price)}`}
+                            </span>
+                          </span>
+                        </>
+                      ) : item.source === "upload" ? (
+                        t("你上传的家具", "Your upload")
+                      ) : (
+                        t("当前 3D 对象", "3D object")
+                      )}
+                      {sizeText && (
+                        <span
+                          className="size-readout"
+                          title={entry ? t(`标称 ${dimsText(entry, lang)}`, `Listed ${dimsText(entry, lang)}`) : shown?.uniform ? t("填写的尺寸和照片比例差别较大，已按照片比例缩放", "The size you gave differs a lot from the photo's proportions, so the photo's proportions are kept") : t("你填写的尺寸", "The size you gave")}
+                        >
+                          · <b>{sizeText}</b> cm{shown?.uniform && <em>{t("按照片比例", "photo proportions")}</em>}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="inspector-actions">
+                    {entry && (
+                      <a
+                        className="buy-link"
+                        href={entry.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={t(`打开 ${entry.shop} ${marketLabel(entry)}的商品页（新标签页）`, `Open the product page on the ${entry.shop} ${marketLabel(entry, "en")} (new tab)`)}
+                      >
+                        {t("去官网", "Shop")}
+                        <ArrowUpRight size={13} />
+                      </a>
+                    )}
+                    {original && (
+                      <a className="icon" href={url(original)} download={displayName(item) + ".glb"} title={t("下载原始模型（8K 贴图）", "Download the original model (8K textures)")} aria-label={t("下载原始模型", "Download the original model")}>
+                        <Download size={15} />
+                      </a>
+                    )}
+                    {generated && !site && (
+                      <button className="icon" title={t(`高精度重新生成（约 ${TRIPO_CREDITS} 积分）`, `Regenerate in high detail (about ${TRIPO_CREDITS} credits)`)} aria-label={t("高精度重新生成", "Regenerate in high detail")} disabled={busy} onClick={() => run(() => regenerate(item))}>
+                        <Sparkles size={15} />
+                      </button>
+                    )}
+                    <button
+                      className="tool"
+                      onClick={() => {
+                        changeItems(settleOff(p.items, item.id).map((i) => (i.id === item.id ? { ...i, status: "ready" as const } : i)));
+                        setSelected(null);
+                      }}
+                    >
+                      <ArrowUpFromLine size={15} />
+                      {t("收回", "Put away")}
+                    </button>
+                    <button
+                      className="icon danger"
+                      aria-label={t("移除选中家具", "Remove this piece")}
+                      title={t("移除", "Remove")}
+                      onClick={() => {
+                        changeItems(settleOff(p.items, item.id).filter((i) => i.id !== item.id));
+                        setSelected(null);
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                    <button className="icon" aria-label={t("取消选中", "Deselect")} onClick={() => setSelected(null)}>
+                      <X size={15} />
+                    </button>
+                  </div>
+                </div>
+                <div className="inspector-row">
+                  <label>{t("旋转", "Turn")}</label>
+                  <button className="icon" aria-label={t("向左旋转", "Turn left")} onClick={() => turn(item, -Math.PI / 12)}>
+                    <RotateCcw />
+                  </button>
+                  <span className="value">{(((Math.round((item.rotation * 180) / Math.PI) % 360) + 360) % 360)}°</span>
+                  <button className="icon" aria-label={t("向右旋转", "Turn right")} onClick={() => turn(item, Math.PI / 12)}>
+                    <RotateCw />
+                  </button>
+                  <span className="divider" />
+                  <label>{t("比例", "Scale")}</label>
+                  <button className="icon" aria-label={t("缩小家具", "Smaller")} onClick={() => resize({ scale: Math.max(0.1, Math.round((item.scale - 0.1) * 10) / 10) })}>
+                    <Minus />
+                  </button>
+                  <button className="value reset-scale" title={t("恢复初始比例", "Back to 100%")} onClick={() => resize({ scale: 1 })}>
+                    {Math.round(item.scale * 100)}%
+                  </button>
+                  <button className="icon" aria-label={t("放大家具", "Larger")} onClick={() => resize({ scale: Math.min(5, Math.round((item.scale + 0.1) * 10) / 10) })}>
+                    <Plus />
+                  </button>
+                  <span className="divider" />
+                  <label htmlFor="lift-input" title={t("壁挂的搁板、挂钩可以挂到墙上", "Raise shelves and hooks onto a wall")}>
+                    {t("离地", "Height")}
+                  </label>
+                  <button className="icon" aria-label={t("降低 5 厘米", "5 cm lower")} disabled={lift <= 0} onClick={() => raise(-5)}>
+                    <Minus />
+                  </button>
+                  <LiftInput key={item.id + ":" + lift} id="lift-input" value={lift} onCommit={(v) => raise(v - lift)} />
+                  <button className="icon" aria-label={t("升高 5 厘米", "5 cm higher")} onClick={() => raise(5)}>
+                    <Plus />
+                  </button>
+                  {!item.dims && (
+                    <>
+                      <span className="divider" />
+                      <label htmlFor="height-input">{t("高度（估计）", "Height (est.)")}</label>
+                      <input
+                        id="height-input"
+                        className="small-number"
+                        type="number"
+                        min=".1"
+                        max="5"
+                        step=".05"
+                        value={item.height}
+                        onChange={(e) => resize({ height: Number(e.target.value) || 1 })}
+                      />
+                      <span className="unit">m</span>
+                    </>
+                  )}
+                  <div className="inspector-extras">
+                    {canHang && (
+                      <button
+                        className={"tool" + (hangs ? " on" : "")}
+                        aria-pressed={hangs}
+                        title={t("吊在天花板上，拖动时沿天花板移动", "Hang it from the ceiling; dragging moves it along the ceiling")}
+                        onClick={() => setMount(item, hangs ? "floor" : "ceiling")}
+                      >
+                        <Lamp size={15} />
+                        {t("吊在天花板", "Hang")}
+                      </button>
+                    )}
+                    {floating && (
+                      <button className="tool" title={t("落到下面的桌面、床面或地面", "Drop onto the desk, bed or floor below")} onClick={() => liftBy(rest - item.position[1])}>
+                        <ArrowDownToLine size={15} />
+                        {t("落下", "Drop")}
+                      </button>
+                    )}
+                    {p.room?.erasures?.some((x) => x.item === item.id) && (
+                      <button className="tool" onClick={() => adjustErasure(item.id)}>
+                        <Scan size={15} />
+                        {t("调整擦除范围", "Erase box")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+          {floorOpen && p && (
+            <div className="floor-panel">
+              <div className="inspector-title">
+                <strong>{t("地面位置", "Floor")}</strong>
+                <button className="icon" onClick={() => setFloorOpen(false)} aria-label={t("关闭地面校准", "Close floor settings")}>
+                  <X />
+                </button>
+              </div>
+              <p>
+                {floorNote ||
+                  t("让网格刚好贴在地板上：网格浮在地板上方就往左拖，网格看不见了就往右一点。", "Make the grid sit right on the floor: if it floats above, drag left; if it disappears, nudge right.")}
+              </p>
+              <div className="floor-field">
+                <span>{t("地面高度", "Floor height")}</span>
+                <input
+                  type="range"
+                  min={-3}
+                  max={1}
+                  step={0.01}
+                  value={p.floor.height}
+                  aria-label={t("地面高度", "Floor height")}
+                  onChange={(e) => setFloor({ height: Number(e.target.value) })}
+                />
+                <div className="floor-step">
+                  <button className="icon" aria-label={t("地面下移 1 厘米", "Floor 1 cm down")} onClick={() => setFloor({ height: p.floor.height - 0.01 })}>
+                    <Minus />
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={t("地面高度（米）", "Floor height (m)")}
+                    value={floorDraft}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setFloorDraft(e.target.value)}
+                    onBlur={commitFloorDraft}
+                    onKeyDown={(e) => e.key === "Enter" && commitFloorDraft()}
+                  />
+                  <span>m</span>
+                  <button className="icon" aria-label={t("地面上移 1 厘米", "Floor 1 cm up")} onClick={() => setFloor({ height: p.floor.height + 0.01 })}>
+                    <Plus />
+                  </button>
+                </div>
+              </div>
+              <div className="floor-field">
+                <span>
+                  {t("可摆放范围 ", "Placement area ")}<b>{p.floor.size} × {p.floor.size} m</b>
+                </span>
+                <input
+                  type="range"
+                  min={2}
+                  max={20}
+                  step={0.5}
+                  value={p.floor.size}
+                  aria-label={t("可摆放范围", "Placement area")}
+                  onChange={(e) => setFloor({ size: Number(e.target.value) })}
+                />
+              </div>
+              <button
+                className="button primary"
+                disabled={busy}
+                onClick={() => {
+                  commitFloorDraft();
+                  void persistFloor({ ...p.floor, confirmed: true }, t("地面位置已保存。", "Floor saved."));
+                  setFloorNote("");
+                  setFloorOpen(false);
+                }}
+              >
+                {t("确认并保存", "Confirm and save")}
+              </button>
+            </div>
+          )}
+          {arrangeOpen && p.mode === "real" && p.room && (
+            <ArrangePanel
+              busy={arranging}
+              result={arranged}
+              before={before}
+              onBefore={setBefore}
+              onAsk={(s) => void arrange(s)}
+              onUndo={undoArrange}
+              onAgain={() => {
+                setArranged(null);
+                setBefore(false);
+              }}
+              onClose={() => {
+                setArrangeOpen(false);
+                setArranged(null);
+                setBefore(false);
+              }}
+            />
+          )}
+          <div className="stage-undo">
+            <button className="icon" title={t("撤销", "Undo")} aria-label={t("撤销", "Undo")} disabled={!history.length} onClick={undo}>
+              <Undo2 />
+            </button>
+            <button className="icon" title={t("重做", "Redo")} aria-label={t("重做", "Redo")} disabled={!future.length} onClick={redo}>
+              <Redo2 />
+            </button>
           </div>
-        )}
-        {p?.mode === "real" && p.room && p.room.source !== "imported" && draftNoteClosed !== p.id && !editDraft && !pending && (
-          <div className="draft-note" role="note">
-            <strong>{t("这是草稿版房间", "This is a draft room")}</strong>
-            <span>
-              {t(
-                "想要更清晰逼真的效果，可以去 Marble 官网用 Marble 1.1 模型生成同一张照片，再导入替换（不消耗本工作台积分）。",
-                "For a sharper, more lifelike room, generate the same photo with Marble 1.1 on the Marble website, then import it here (no credits from this app).",
-              )}
-            </span>
-            <a className="text-button" href={MARBLE} target="_blank" rel="noopener noreferrer">
-              {t("去 Marble 官网", "Open Marble")} <ArrowUpRight size={13} />
-            </a>
-            <button className="text-button" onClick={() => { setDrawer(true); setImportOpen(true); }}>
-              {t("导入房间", "Import room")}
-            </button>
-            <button className="icon" aria-label={t("关闭提示", "Dismiss")} onClick={() => setDraftNoteClosed(p.id)}>
-              <X size={14} />
-            </button>
+          {(p.mode === "demo" || p.room) && !item && !pending && !pickMode && !editDraft && !floorOpen && (
+            <div className="orbit-hint" aria-hidden="true">
+              <Rotate3d size={15} />
+              <b>360°</b>
+              <span>{t("拖动旋转 · 右键平移 · 滚轮缩放", "Drag to orbit · right-drag to pan · scroll to zoom")}</span>
+            </div>
+          )}
           </div>
         )}
         {!p && !boot && (
@@ -1470,9 +1919,9 @@ export default function Workbench() {
           </div>
         )}
         {p && (
-          <div className="canvas-toolbar glass">
-            {p.mode === "real" && p.room && (
-              <>
+          <nav className="rail" aria-label={t("房间工具", "Room tools")}>
+            <div className="rail-group">
+              {p.mode === "real" && p.room && (
                 <button
                   className={"tool" + (pickMode ? " active" : "")}
                   aria-pressed={pickMode}
@@ -1483,86 +1932,79 @@ export default function Workbench() {
                     setSelected(null);
                   }}
                 >
-                  <Hand size={17} />
+                  <Hand size={19} />
                   <span>{t("挪动原家具", "Move room furniture")}</span>
                 </button>
-                <span className="divider" />
-              </>
-            )}
-            <button className="tool" title={t("重置视角", "Reset view")} onClick={() => setReset((v) => v + 1)}>
-              <Maximize size={17} />
-              <span>{t("重置视角", "Reset view")}</span>
-            </button>
-            {p.mode === "real" && (
+              )}
+              <button className="tool" title={t("重置视角", "Reset view")} onClick={() => setReset((v) => v + 1)}>
+                <Maximize size={19} />
+                <span>{t("重置视角", "Reset view")}</span>
+              </button>
+              {p.original && (
+                <button className={"tool" + (reference ? " on" : "")} aria-pressed={reference} title={t("原图", "Photo")} onClick={() => setReference((v) => !v)}>
+                  <ImageIcon size={19} />
+                  <span>{t("原图", "Photo")}</span>
+                </button>
+              )}
+              {p.mode === "real" && (
+                <button
+                  className={"tool" + (floorOpen ? " on" : "")}
+                  aria-pressed={floorOpen}
+                  title={t("校准地面", "Floor")}
+                  onClick={() => {
+                    setFloorDraft(String(p.floor.height));
+                    setFloorOpen((v) => !v);
+                  }}
+                >
+                  <SlidersHorizontal size={19} />
+                  <span>{t("校准地面", "Floor")}</span>
+                </button>
+              )}
               <button
-                className="tool"
-                title={t("校准地面", "Floor")}
+                className="tool desk-only"
+                title={t("处理步骤", "Steps")}
                 onClick={() => {
-                  setFloorDraft(String(p.floor.height));
-                  setFloorOpen((v) => !v);
+                  setDrawer(true);
+                  setError("");
                 }}
               >
-                <SlidersHorizontal size={17} />
-                <span>{t("校准地面", "Floor")}</span>
+                <Layers size={19} />
+                <span>{t("处理步骤", "Steps")}</span>
+              </button>
+              <button
+                className="tool desk-only"
+                title={t("服务状态", "Services")}
+                onClick={() => {
+                  setShowServices(true);
+                  fetch("/api/workbench?services=1")
+                    .then((r) => r.json())
+                    .then(setServices)
+                    .catch(() => setServices({ error: t("服务状态暂时不可用", "Service status is unavailable for a moment") }));
+                }}
+              >
+                <Activity size={19} />
+                <span>{t("服务状态", "Services")}</span>
+              </button>
+            </div>
+            {p.mode === "real" && p.room && (
+              <button
+                className={"tool rail-ai" + (arrangeOpen ? " on" : "")}
+                aria-pressed={arrangeOpen}
+                title={t("一句话帮我布置", "Arrange it for me")}
+                onClick={() => {
+                  setArrangeOpen((v) => !v);
+                  setArranged(null);
+                }}
+              >
+                <Sparkles size={22} />
+                <span>{t("一句话帮我布置", "Arrange it for me")}</span>
               </button>
             )}
-            <button
-              className="tool"
-              title={t("处理步骤", "Steps")}
-              onClick={() => {
-                setDrawer(true);
-                setError("");
-              }}
-            >
-              <Layers size={17} />
-              <span>{t("处理步骤", "Steps")}</span>
-            </button>
-            {(p.mode === "demo" || p.room) && (
-              <>
-                <span className="divider" />
-                <button
-                  className={"tool" + (panel === "library" && !editDraft ? " on" : "")}
-                  aria-pressed={panel === "library" && !editDraft}
-                  title={t("家具库", "Library")}
-                  onClick={() => setPanel((v) => (v === "library" ? "shelf" : "library"))}
-                >
-                  <Library size={17} />
-                  <span>{t("家具库", "Library")}</span>
-                </button>
-              </>
-            )}
-          </div>
-        )}
-        {pickMode && p?.room && !roomPick && !editDraft && !pending && !item && (
-          <div className="placement-hint pick-hint">
-            <Hand size={16} />
-            {t("点房间里的家具，把它变成可以挪动的", "Click a piece in the room to make it movable")}
-            <button className="icon" onClick={() => setPickMode(false)} aria-label={t("关闭挪动原家具", "Turn off moving room furniture")}>
-              <X size={15} />
-            </button>
-          </div>
-        )}
-        {pending && (
-          <div className="placement-hint">
-            <Move size={17} />
-            {(() => {
-              const it = p?.items.find((i) => i.id === pending);
-              if (!it) return "";
-              return hangsFromCeiling(it)
-                ? t(`对准天花板（或下面的地面）点击，挂上 ${displayName(it)}`, `Click the ceiling (or the floor under it) to hang ${displayName(it)}`)
-                : t(`在地面或桌面上点击，放下 ${displayName(it)}`, `Click the floor or a tabletop to place ${displayName(it)}`);
-            })()}
-            <button
-              className="icon"
-              onClick={() => setPending(null)}
-              aria-label={t("取消放置", "Cancel placing")}
-            >
-              <X size={15} />
-            </button>
-          </div>
+          </nav>
         )}
         {p && !editDraft && (p.mode === "demo" || p.room || p.items.length > 0) && (
-          <aside className={"shelf" + (tab === "library" ? " library" : "")} aria-label={t("家具", "Furniture")}>
+          <aside className={"shelf" + (tab === "library" ? " library" : "") + (sheetUp ? " up" : "")} aria-label={t("家具", "Furniture")}>
+            {sheetHandle}
             <div className="panel-tabs" role="tablist" aria-label={t("家具栏与家具库", "Shelf and library")}>
               <button role="tab" aria-selected={tab === "shelf"} className={tab === "shelf" ? "on" : ""} onClick={() => setPanel("shelf")}>
                 <Box size={15} />
@@ -1667,9 +2109,9 @@ export default function Workbench() {
                             </button>
                           )}
                           <div className="furniture-preview">
-                            {thumbs[i.id] || i.thumbnail ? (
+                            {entry || thumbs[i.id] || i.thumbnail ? (
                               <img
-                                src={thumbs[i.id] || url(i.thumbnail)}
+                                src={entry?.image ?? (thumbs[i.id] || url(i.thumbnail))}
                                 alt={name}
                               />
                             ) : (
@@ -1743,7 +2185,7 @@ export default function Workbench() {
                   <div className="empty-shelf">
                     <Box size={24} />
                     <h2>{t("想挪动或添置家具？", "Move or add furniture?")}</h2>
-                    <p>{t("打开工具栏的「挪动原家具」，在房间里点一下照片里的家具，上传它的照片，就能变成可以移动的 3D 模型。", "Turn on “Move room furniture” in the toolbar, click a piece in the room and upload a photo of it: it becomes a 3D model you can move.")}</p>
+                    <p>{t("点左侧的手形按钮「挪动原家具」，在房间里点一下照片里的家具，上传它的照片，就能变成可以移动的 3D 模型。", "Turn on “Move room furniture” (the hand on the left), click a piece in the room and upload a photo of it: it becomes a 3D model you can move.")}</p>
                     <div className="empty-actions">
                       <button className="button primary" disabled={!libraryOpen} onClick={() => setPanel("library")}>
                         <Library size={15} />
@@ -1784,22 +2226,9 @@ export default function Workbench() {
             onSubmit={addPieces}
           />
         )}
-        {roomPick && (
-          <div className="pick-pop" style={{ left: roomPick.x, top: roomPick.y }} role="dialog" aria-label={t("把家具变成可编辑", "Make this piece movable")}>
-            <strong>{t("把它变成可编辑的家具？", "Make this piece movable?")}</strong>
-            <p>{t("上传这件家具的照片，会生成 3D 模型放回原处，之后就能挪动它。", "Upload a photo of it: a 3D model takes its place, and then you can move it.")}</p>
-            <div className="pick-actions">
-              <button className="button primary" onClick={startEdit}>
-                {t("是，上传照片", "Yes, upload a photo")}
-              </button>
-              <button className="text-button" onClick={() => setRoomPick(null)}>
-                {t("取消", "Cancel")}
-              </button>
-            </div>
-          </div>
-        )}
         {editDraft && (
-          <aside className="shelf edit-panel" aria-label={t("变成可编辑家具", "Make a piece movable")}>
+          <aside className={"shelf edit-panel" + (sheetUp ? " up" : "")} aria-label={t("变成可编辑家具", "Make a piece movable")}>
+            {sheetHandle}
             <div className="shelf-heading">
               <h2>{editDraft.mode === "adjust" ? t("调整擦除范围", "Adjust the erase box") : t("变成可编辑家具", "Make it movable")}</h2>
               <button className="icon" aria-label={t("取消", "Cancel")} onClick={closeEdit}>
@@ -1954,307 +2383,6 @@ export default function Workbench() {
             </div>
           </aside>
         )}
-        {p?.original && (
-          <div className={"reference " + (!reference ? "collapsed" : "")}>
-            <button onClick={() => setReference((v) => !v)}>
-              <ImageIcon size={15} />
-              {t("原图参考", "Photo")}
-              <ChevronDown size={15} />
-            </button>
-            {reference && <img src={url(p.original)} alt={t("房间原图参考", "The room photo, for reference")} />}
-          </div>
-        )}
-        {item?.status === "placed" && p && (() => {
-          const entry = item.catalogId ? catalogItem(item.catalogId) : undefined;
-          const lift = Math.round((item.position[1] - p.floor.height) * 100);
-          const hangs = hangsFromCeiling(item);
-          const carried = new Set(hangs ? [] : (placement.current?.riders(item.id) ?? []));
-          // Raised or lowered, what stands on the piece goes with it.
-          const liftBy = (dy: number) =>
-            changeItems(p.items.map((i) => (i.id === item.id || carried.has(i.id) ? shifted(i, dy) : i)));
-          const raise = (cm: number) => liftBy(Math.max(p.floor.height, item.position[1] + cm / 100) - item.position[1]);
-          // Hung on a wall or left in mid-air: 落下 puts it on the desk, bed or floor under it.
-          const rest = placement.current?.restAt(item.position[0], item.position[2], item.position[1] + 0.02, [item.id, ...carried]) ?? p.floor.height;
-          const floating = !hangs && item.position[1] - rest > 0.04;
-          const shown = placement.current?.sizeOf(item.id) ?? null;
-          const resize = (data: Partial<Item>) => {
-            // A hanging piece keeps its top where it hangs from; a standing one its riders on its top.
-            if (hangs && data.scale !== undefined && shown) {
-              const h = shown.size[1],
-                next = (h * data.scale) / item.scale;
-              patch(item.id, { ...data, position: [item.position[0], item.position[1] + h - next, item.position[2]] });
-              return;
-            }
-            placement.current?.carry(item.id);
-            patch(item.id, data);
-          };
-          const size = (v: number) => Math.round(v * item.scale);
-          const cm = (v: number) => Math.round(v * 100);
-          // Typed sizes as typed (and scaled); a model kept in its photo's proportions, as shown.
-          const sizeText =
-            item.dims && !shown?.uniform
-              ? `${size(item.dims.w)} × ${size(item.dims.d)} × ${size(item.dims.h)}`
-              : shown
-                ? `${cm(shown.size[0])} × ${cm(shown.size[2])} × ${cm(shown.size[1])}`
-                : "";
-          const original = item.model?.endsWith(".lite.glb") ? item.model.replace(/\.lite\.glb$/, ".glb") : null;
-          const generated = !!item.model && !item.model.startsWith("/") && !item.catalogId;
-          const canHang = hangs || ["pendant", "lamp", "other"].includes(item.kind);
-          return (
-            <div className="inspector glass">
-              <div className="inspector-head">
-                <div className="inspector-name">
-                  <strong title={displayName(item)}>{displayName(item)}</strong>
-                  <span className="inspector-meta">
-                    {entry ? (
-                      <>
-                        {entry.shop} · <b>{formatPrice(entry)}</b>
-                        <span className="offer-tip" tabIndex={0} aria-label={t("标价详情", "Price details")}>
-                          <Info size={13} />
-                          <span className="offer-card glass" role="tooltip">
-                            {t(`${marketLabel(entry)}标价 ${formatOriginal(entry)}`, `${formatOriginal(entry)} on the ${marketLabel(entry, "en")}`)} · {variantText(entry, lang)}
-                            {availabilityLabel(entry, lang) && (
-                              <>
-                                {" · "}
-                                <em>{availabilityLabel(entry, lang)}</em>
-                              </>
-                            )}
-                            {buyNoteText(entry, lang) && ` · ${buyNoteText(entry, lang)}`}
-                            {entry.memberOffer && ` · ${lang === "en" ? entry.memberOffer.labelEn : entry.memberOffer.label} ${formatUSD(entry.memberOffer.price)}`}
-                          </span>
-                        </span>
-                      </>
-                    ) : item.source === "upload" ? (
-                      t("你上传的家具", "Your upload")
-                    ) : (
-                      t("当前 3D 对象", "3D object")
-                    )}
-                    {sizeText && (
-                      <span
-                        className="size-readout"
-                        title={entry ? t(`标称 ${dimsText(entry, lang)}`, `Listed ${dimsText(entry, lang)}`) : shown?.uniform ? t("填写的尺寸和照片比例差别较大，已按照片比例缩放", "The size you gave differs a lot from the photo's proportions, so the photo's proportions are kept") : t("你填写的尺寸", "The size you gave")}
-                      >
-                        · <b>{sizeText}</b> cm{shown?.uniform && <em>{t("按照片比例", "photo proportions")}</em>}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="inspector-actions">
-                  {entry && (
-                    <a
-                      className="buy-link"
-                      href={entry.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={t(`打开 ${entry.shop} ${marketLabel(entry)}的商品页（新标签页）`, `Open the product page on the ${entry.shop} ${marketLabel(entry, "en")} (new tab)`)}
-                    >
-                      {t("去官网", "Shop")}
-                      <ArrowUpRight size={13} />
-                    </a>
-                  )}
-                  {original && (
-                    <a className="icon" href={url(original)} download={displayName(item) + ".glb"} title={t("下载原始模型（8K 贴图）", "Download the original model (8K textures)")} aria-label={t("下载原始模型", "Download the original model")}>
-                      <Download size={15} />
-                    </a>
-                  )}
-                  {generated && !site && (
-                    <button className="icon" title={t(`高精度重新生成（约 ${TRIPO_CREDITS} 积分）`, `Regenerate in high detail (about ${TRIPO_CREDITS} credits)`)} aria-label={t("高精度重新生成", "Regenerate in high detail")} disabled={busy} onClick={() => run(() => regenerate(item))}>
-                      <Sparkles size={15} />
-                    </button>
-                  )}
-                  <button
-                    className="tool"
-                    onClick={() => {
-                      changeItems(settleOff(p.items, item.id).map((i) => (i.id === item.id ? { ...i, status: "ready" as const } : i)));
-                      setSelected(null);
-                    }}
-                  >
-                    <ArrowUpFromLine size={15} />
-                    {t("收回", "Put away")}
-                  </button>
-                  <button
-                    className="icon danger"
-                    aria-label={t("移除选中家具", "Remove this piece")}
-                    title={t("移除", "Remove")}
-                    onClick={() => {
-                      changeItems(settleOff(p.items, item.id).filter((i) => i.id !== item.id));
-                      setSelected(null);
-                    }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                  <button className="icon" aria-label={t("取消选中", "Deselect")} onClick={() => setSelected(null)}>
-                    <X size={15} />
-                  </button>
-                </div>
-              </div>
-              <div className="inspector-row">
-                <label>{t("旋转", "Turn")}</label>
-                <button className="icon" aria-label={t("向左旋转", "Turn left")} onClick={() => turn(item, -Math.PI / 12)}>
-                  <RotateCcw />
-                </button>
-                <span className="value">{(((Math.round((item.rotation * 180) / Math.PI) % 360) + 360) % 360)}°</span>
-                <button className="icon" aria-label={t("向右旋转", "Turn right")} onClick={() => turn(item, Math.PI / 12)}>
-                  <RotateCw />
-                </button>
-                <span className="divider" />
-                <label>{t("比例", "Scale")}</label>
-                <button className="icon" aria-label={t("缩小家具", "Smaller")} onClick={() => resize({ scale: Math.max(0.1, Math.round((item.scale - 0.1) * 10) / 10) })}>
-                  <Minus />
-                </button>
-                <button className="value reset-scale" title={t("恢复初始比例", "Back to 100%")} onClick={() => resize({ scale: 1 })}>
-                  {Math.round(item.scale * 100)}%
-                </button>
-                <button className="icon" aria-label={t("放大家具", "Larger")} onClick={() => resize({ scale: Math.min(5, Math.round((item.scale + 0.1) * 10) / 10) })}>
-                  <Plus />
-                </button>
-                <span className="divider" />
-                <label htmlFor="lift-input" title={t("壁挂的搁板、挂钩可以挂到墙上", "Raise shelves and hooks onto a wall")}>
-                  {t("离地", "Height")}
-                </label>
-                <button className="icon" aria-label={t("降低 5 厘米", "5 cm lower")} disabled={lift <= 0} onClick={() => raise(-5)}>
-                  <Minus />
-                </button>
-                <LiftInput key={item.id + ":" + lift} id="lift-input" value={lift} onCommit={(v) => raise(v - lift)} />
-                <button className="icon" aria-label={t("升高 5 厘米", "5 cm higher")} onClick={() => raise(5)}>
-                  <Plus />
-                </button>
-                {!item.dims && (
-                  <>
-                    <span className="divider" />
-                    <label htmlFor="height-input">{t("高度（估计）", "Height (est.)")}</label>
-                    <input
-                      id="height-input"
-                      className="small-number"
-                      type="number"
-                      min=".1"
-                      max="5"
-                      step=".05"
-                      value={item.height}
-                      onChange={(e) => resize({ height: Number(e.target.value) || 1 })}
-                    />
-                    <span className="unit">m</span>
-                  </>
-                )}
-                <div className="inspector-extras">
-                  {canHang && (
-                    <button
-                      className={"tool" + (hangs ? " on" : "")}
-                      aria-pressed={hangs}
-                      title={t("吊在天花板上，拖动时沿天花板移动", "Hang it from the ceiling; dragging moves it along the ceiling")}
-                      onClick={() => setMount(item, hangs ? "floor" : "ceiling")}
-                    >
-                      <Lamp size={15} />
-                      {t("吊在天花板", "Hang")}
-                    </button>
-                  )}
-                  {floating && (
-                    <button className="tool" title={t("落到下面的桌面、床面或地面", "Drop onto the desk, bed or floor below")} onClick={() => liftBy(rest - item.position[1])}>
-                      <ArrowDownToLine size={15} />
-                      {t("落下", "Drop")}
-                    </button>
-                  )}
-                  {p.room?.erasures?.some((x) => x.item === item.id) && (
-                    <button className="tool" onClick={() => adjustErasure(item.id)}>
-                      <Scan size={15} />
-                      {t("调整擦除范围", "Erase box")}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-        {floorOpen && p && (
-          <div className="floor-panel">
-            <div className="inspector-title">
-              <strong>{t("地面位置", "Floor")}</strong>
-              <button className="icon" onClick={() => setFloorOpen(false)} aria-label={t("关闭地面校准", "Close floor settings")}>
-                <X />
-              </button>
-            </div>
-            <p>
-              {floorNote ||
-                t("让网格刚好贴在地板上：网格浮在地板上方就往左拖，网格看不见了就往右一点。", "Make the grid sit right on the floor: if it floats above, drag left; if it disappears, nudge right.")}
-            </p>
-            <div className="floor-field">
-              <span>{t("地面高度", "Floor height")}</span>
-              <input
-                type="range"
-                min={-3}
-                max={1}
-                step={0.01}
-                value={p.floor.height}
-                aria-label={t("地面高度", "Floor height")}
-                onChange={(e) => setFloor({ height: Number(e.target.value) })}
-              />
-              <div className="floor-step">
-                <button className="icon" aria-label={t("地面下移 1 厘米", "Floor 1 cm down")} onClick={() => setFloor({ height: p.floor.height - 0.01 })}>
-                  <Minus />
-                </button>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  aria-label={t("地面高度（米）", "Floor height (m)")}
-                  value={floorDraft}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setFloorDraft(e.target.value)}
-                  onBlur={commitFloorDraft}
-                  onKeyDown={(e) => e.key === "Enter" && commitFloorDraft()}
-                />
-                <span>m</span>
-                <button className="icon" aria-label={t("地面上移 1 厘米", "Floor 1 cm up")} onClick={() => setFloor({ height: p.floor.height + 0.01 })}>
-                  <Plus />
-                </button>
-              </div>
-            </div>
-            <div className="floor-field">
-              <span>
-                {t("可摆放范围 ", "Placement area ")}<b>{p.floor.size} × {p.floor.size} m</b>
-              </span>
-              <input
-                type="range"
-                min={2}
-                max={20}
-                step={0.5}
-                value={p.floor.size}
-                aria-label={t("可摆放范围", "Placement area")}
-                onChange={(e) => setFloor({ size: Number(e.target.value) })}
-              />
-            </div>
-            <button
-              className="button primary"
-              disabled={busy}
-              onClick={() => {
-                commitFloorDraft();
-                void persistFloor({ ...p.floor, confirmed: true }, t("地面位置已保存。", "Floor saved."));
-                setFloorNote("");
-                setFloorOpen(false);
-              }}
-            >
-              {t("确认并保存", "Confirm and save")}
-            </button>
-          </div>
-        )}
-        <footer className="workspace-footer">
-          <div>
-            <span className="tiny-dot" />
-            {p?.mode === "demo" ? t("示例模式", "Sample") : p?.room ? t("3D 空间", "3D room") : t("照片 → 空间", "Photo → room")}
-          </div>
-          <span>{t("拖动空白旋转 · 右键平移 · 滚轮缩放视角", "Drag to orbit · right-drag to pan · scroll to zoom")}</span>
-          <button
-            className="text-button"
-            onClick={() => {
-              setShowServices(true);
-              fetch("/api/workbench?services=1")
-                .then((r) => r.json())
-                .then(setServices)
-                .catch(() => setServices({ error: t("服务状态暂时不可用", "Service status is unavailable for a moment") }));
-            }}
-          >
-            {t("服务状态", "Services")}
-          </button>
-        </footer>
       </section>
       {error && (
         <div className="error-banner" role="alert">

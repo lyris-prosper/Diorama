@@ -8,14 +8,83 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import type { CleanLayer, Erasure, Project } from "@/lib/types";
 import { alignClean, readSpzPoints } from "@/lib/align-clean";
 import { currentLang, pick } from "@/lib/i18n";
-import { buildCeiling, buildRoomGrid, castRoom, eraseBoxes, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, wallHeading, type RoomGrid } from "@/lib/placement";
+import { autoSpot, buildCeiling, buildRoomGrid, castRoom, eraseBoxes, heightMap, hitPieces, landOnPiece, piecesBelow, ridersOf, roomBelow, topOfPiece, wallHeading, type RoomGrid } from "@/lib/placement";
 import { fitBox, type FittedBox } from "@/lib/fit-box";
 import { fitScale } from "@/lib/fit-model";
 import { hangsFromCeiling } from "@/lib/furniture-kinds";
+import { catalogItem } from "@/lib/catalog";
 import { assetUrl } from "@/lib/asset-url";
 const asset = (key: string) => assetUrl(key);
 // Library models are meshopt-compressed; generated ones load the same way.
 const gltfLoader = () => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+// The scan's floor (and wall) is a few centimetres of fuzz: its splats, drawn after the furniture and
+// tested against its depth, cover whatever sits right on it — most of a rug, the feet of a chair.
+// Near the surface a piece stands on, its depth is pulled toward the camera by the fuzz's thickness
+// as seen along the view ray (more at a grazing view, up to SCAN_FUZZ_MAX). Moving a point along its
+// own view ray leaves it on the same pixel, so only the depth test changes: the fuzz falls behind,
+// while a bed or a wall in front, much nearer than that, still hides the piece.
+const SCAN_FUZZ = 0.045;
+const SCAN_FUZZ_MAX = 0.22;
+/** From the base up to this height, the pull fades out. */
+const SCAN_FUZZ_FADE = 0.2;
+/** Lets a loaded model show through the scan's surface fuzz where it stands (or, on a wall, all over). */
+function clearOfScanFuzz(group: THREE.Object3D, model: THREE.Object3D, onWall: () => boolean) {
+  const base = { value: 0 }, whole = { value: 0 }, normal = { value: new THREE.Vector3(0, 1, 0) };
+  model.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    o.onBeforeRender = () => {
+      const wall = onWall();
+      base.value = group.position.y;
+      whole.value = wall ? 1 : 0;
+      // A wall piece's surface is the wall behind it: its own facing (+Z) turned with the piece.
+      if (wall) normal.value.set(Math.sin(group.rotation.y), 0, Math.cos(group.rotation.y));
+      else normal.value.set(0, 1, 0);
+    };
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      m.onBeforeCompile = (shader: THREE.WebGLProgramParametersWithUniforms) => {
+        shader.uniforms.fuzzBase = base;
+        shader.uniforms.fuzzWhole = whole;
+        shader.uniforms.fuzzNormal = normal;
+        shader.vertexShader = shader.vertexShader
+          .replace("void main() {", "uniform float fuzzBase;\nuniform float fuzzWhole;\nuniform vec3 fuzzNormal;\nvoid main() {")
+          .replace(
+            "#include <project_vertex>",
+            `#include <project_vertex>
+            {
+              vec3 world = (modelMatrix * vec4(transformed, 1.0)).xyz;
+              float facing = abs(dot(normalize(world - cameraPosition), fuzzNormal));
+              float near = max(fuzzWhole, 1.0 - smoothstep(0.0, ${SCAN_FUZZ_FADE.toFixed(3)}, world.y - fuzzBase));
+              float pull = near * min(${SCAN_FUZZ.toFixed(3)} / max(facing, 1e-3), ${SCAN_FUZZ_MAX.toFixed(3)});
+              float far = length(mvPosition.xyz);
+              gl_Position = projectionMatrix * vec4(mvPosition.xyz * max(0.0, 1.0 - pull / max(far, 1e-4)), 1.0);
+            }`,
+          );
+      };
+      m.customProgramCacheKey = () => "clear-of-scan-fuzz";
+      m.needsUpdate = true;
+    }
+  });
+}
+/** A piece that just arrived falls in from 45 cm up and settles with a small bounce. */
+function dropIn(o: THREE.Object3D, mark: () => void) {
+  const start = performance.now(),
+    ms = 650;
+  const bounce = (t: number) => {
+    const n = 7.5625, d = 2.75;
+    if (t < 1 / d) return n * t * t;
+    if (t < 2 / d) return n * (t -= 1.5 / d) * t + 0.75;
+    if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + 0.9375;
+    return n * (t -= 2.625 / d) * t + 0.984375;
+  };
+  const step = () => {
+    const t = Math.min(1, (performance.now() - start) / ms);
+    o.position.y = 0.45 * (1 - bounce(t));
+    o.scale.setScalar(0.92 + 0.08 * Math.min(1, t * 1.6));
+    mark();
+    if (t < 1) requestAnimationFrame(step);
+  };
+  step();
+}
 function box(
   g: THREE.Group,
   size: number[],
@@ -118,6 +187,8 @@ export type PlacementApi = {
   ceilingAt(x: number, z: number): number;
   /** The turn that squares a piece with the room's walls (lib/placement.ts wallHeading), or null. */
   heading(): number | null;
+  /** A free place in view for a piece of this zone and size (w, d, h metres), or null (lib/placement.ts autoSpot). */
+  spot(zone: "floor" | "top" | "wall", size: [number, number, number], taken: { x: number; z: number; r: number }[]): { position: [number, number, number]; rotation: number } | null;
 };
 type Props = {
   project: Project;
@@ -138,8 +209,10 @@ type Props = {
   onError: (s: string) => void;
   onFloorDetected?: (fit: FloorFit | null) => void;
   floorEditing?: boolean;
-  /** Clicks on the room offer to make the furniture there movable (the toolbar switch). */
+  /** Clicks on the room offer to make the furniture there movable (the rail's switch). */
   pickEnabled?: boolean;
+  /** Pieces kept out of view for a moment (the “before” of an arrangement); they drop back in. */
+  hidden?: string[];
   /** A click on the room itself (not the floor, not placed furniture): world point and screen position. */
   onRoomPick?: (point: [number, number, number], screen: { x: number; y: number }, forward: [number, number]) => void;
   /** The erase box being fitted; its contents are hidden live and it can be dragged along the floor. */
@@ -685,7 +758,7 @@ export default function Scene(props: Props) {
       cam.lookAt(c);
       const old = renderer.getSize(new THREE.Vector2());
       renderer.setSize(260, 260, false);
-      renderer.setClearColor("#f9f6f0", 1);
+      renderer.setClearColor("#ffffff", 1);
       renderer.render(ts, cam);
       live.current.onThumb(id, renderer.domElement.toDataURL("image/png"));
       renderer.setSize(old.x, old.y, false);
@@ -836,6 +909,17 @@ export default function Scene(props: Props) {
           .catch(() => undefined);
     }
     live.current.onEngine?.({
+      spot: (zone, size, taken) => {
+        const e = engine.current;
+        if (!e?.scan) return null;
+        // The scan seen from above, made again when the scan or the erased boxes change.
+        const erasures = live.current.project.room?.erasures;
+        if (e.heights?.scan !== e.scan || e.heights?.erasures !== erasures) e.heights = { scan: e.scan, erasures, map: heightMap(e.scan, erasedBoxes()) };
+        const dir = camera.getWorldDirection(new THREE.Vector3());
+        // Placed furniture takes its room too.
+        const placed = [...objects.values()].filter((o) => o.visible).map((o) => ({ x: o.position.x, z: o.position.z, r: 0.35 }));
+        return autoSpot(e.heights.map, { zone, size, heading: e.heading, eye: { x: camera.position.x, z: camera.position.z, fx: dir.x, fz: dir.z }, taken: [...taken, ...placed] });
+      },
       riders: (id) => ridersOf(id, objects),
       restAt,
       carry: (id) => {
@@ -1050,6 +1134,13 @@ export default function Scene(props: Props) {
         e.objects.delete(id);
       }
     }
+    // Pieces that arrive while the room is open (not those it opens with) drop in once loaded.
+    if (e.knownFor !== p.id) {
+      e.knownFor = p.id;
+      e.known = new Set(p.items.map((i) => i.id));
+    }
+    const arriving = new Set(p.items.filter((i) => !e.known.has(i.id) && i.status === "placed").map((i) => i.id));
+    for (const i of p.items) e.known.add(i.id);
     for (const item of p.items) {
       let old = e.objects.get(item.id);
       // A model that arrived or was replaced (a slimmed copy) is loaded afresh.
@@ -1103,8 +1194,15 @@ export default function Scene(props: Props) {
                   o.receiveShadow = true;
                 }
               });
+              // Against a wall or under the ceiling the whole piece touches the scan; otherwise its base.
+              const onWall = () => {
+                const now = live.current.project.items.find((i) => i.id === item.id);
+                return !!now && (!!(now.catalogId && catalogItem(now.catalogId)?.wall) || hangsFromCeiling(now));
+              };
+              clearOfScanFuzz(group, model, onWall);
               group.add(pivot);
               e.thumb(item.id, group);
+              if (arriving.has(item.id) && !matchMedia("(prefers-reduced-motion: reduce)").matches) dropIn(pivot, e.mark);
               e.mark();
             },
             undefined,
@@ -1113,7 +1211,10 @@ export default function Scene(props: Props) {
         }
       }
       const group = e.objects.get(item.id);
-      group.visible = item.status === "placed";
+      const away = !!props.hidden?.includes(item.id);
+      // Back from “before”: the piece drops in again.
+      if (!away && e.away?.has(item.id) && group.children[0] && !matchMedia("(prefers-reduced-motion: reduce)").matches) dropIn(group.children[0], e.mark);
+      group.visible = item.status === "placed" && !away;
       group.position.set(...item.position);
       group.rotation.y = item.rotation;
       const base = group.userData.height || item.height;
@@ -1135,7 +1236,8 @@ export default function Scene(props: Props) {
       if (moves.length) live.current.onAdjust?.(moves);
     }
     e.mark();
-  }, [props.project.items, props.project.floor, props.project.id, props.floorEditing]);
+    e.away = new Set(props.hidden ?? []);
+  }, [props.project.items, props.project.floor, props.project.id, props.floorEditing, props.hidden]);
   // The room scan's surfaces for placement (lib/placement.ts), read from the lighter .spz and
   // rebuilt when the floor or the metric scale changes. Until it is ready, pieces land on
   // furniture and the floor plane as before.

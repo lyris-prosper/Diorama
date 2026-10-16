@@ -1,5 +1,6 @@
 import { bindings, getProject, saveProject, cacheRemote, slimModel } from "@/lib/server/storage";
-import { owner, isPublic, clientOf, allowanceLeft, daily, usedUp, MAX_SPACES, type Who } from "@/lib/server/site";
+import { owner, isPublic, clientOf, allowanceLeft, daily, usedUp, takePlan, MAX_SPACES, type Who } from "@/lib/server/site";
+import { planLayout } from "@/lib/server/arrange";
 import { balances, parseIntent, readWorld, parseMarbleSource } from "@/lib/server/providers";
 import { enqueue, tick, retryJob, regenerateJob } from "@/lib/server/jobs";
 import { WORLD_ESTIMATE, TRIPO_ESTIMATE } from "@/lib/server/provider-http";
@@ -360,8 +361,20 @@ export async function POST(req: Request) {
       return Response.json({ ...(await getProject(p.id, user)), note, added });
     }
     if (b.action === "add-catalog-item") {
+      // Several at once (“帮我布置”): each with its own spot and turn, one save.
+      if (Array.isArray(b.items)) {
+        const ids = (b.items as unknown[]).slice(0, 12).map((x) => addCatalogItem(p, x as typeof b).id);
+        return Response.json({ ...(await saveProject(p, user)), added: ids });
+      }
       const item = await addCatalogItem(p, b);
       return Response.json({ ...(await saveProject(p, user)), added: item.id });
+    }
+    if (b.action === "plan-layout") {
+      const text = String(b.text ?? "").trim().slice(0, 200);
+      if (!text) throw say("说一句想要的样子，比如“温馨一点的卧室”。", "Say what you'd like, for example “a cozy bedroom”.");
+      if (p.mode === "real" && !p.room) throw say("先生成或导入 3D 房间，再帮你布置。", "Generate or import the 3D room first, then I can arrange it.");
+      await takePlan(db, who);
+      return Response.json(await planLayout(p, text, lang));
     }
     if (b.action === "optimize-models") {
       // Models generated before slimming existed (a 42 MB bed) get their light copy; originals stay.

@@ -50,7 +50,7 @@ export function harness(){
     h.sql?.close();h.sql=new DatabaseSync(':memory:');
     for(const f of ['0000_magical_white_queen.sql','0001_provider_accounting.sql','0002_public_quota.sql'])h.sql.exec(readFileSync('drizzle/'+f,'utf8'));
     h.calls=[];h.handler=null;h.objects=new Map();h.streamed=0;
-    for(const k of ['TRIPO_CREDIT_LIMIT','WORLDLABS_CREDIT_LIMIT','LOCAL_OPTIMIZER','DIORAMA_PUBLIC','DAILY_ROOMS','DAILY_PIECES','DAILY_UPLOADS'])delete h.env[k];
+    for(const k of ['TRIPO_CREDIT_LIMIT','WORLDLABS_CREDIT_LIMIT','LOCAL_OPTIMIZER','DIORAMA_PUBLIC','DAILY_ROOMS','DAILY_PIECES','DAILY_UPLOADS','DAILY_PLANS','DEEPSEEK_API_KEY','DEEPSEEK_MODEL'])delete h.env[k];
   };
   h.insert=(project,owner='local-preview',updated=Date.now())=>h.sql.prepare('INSERT INTO projects(id,owner,data,updated,revision) VALUES(?,?,?,?,0)').run(project.id,owner,JSON.stringify(project),updated);
   h.file=(key,type='image/png',bytes=Buffer.from([137,80,78,71]))=>h.objects.set(key,{bytes,type});

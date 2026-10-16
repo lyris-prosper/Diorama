@@ -236,16 +236,21 @@ export default function CatalogPanel({
                     href={i.link}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label={t(`去 ${i.shop} 官网`, `Open on ${i.shop}`)}
                     title={t(`打开 ${i.shop} ${marketLabel(i)}的商品页（新标签页）`, `Open the product page on the ${i.shop} ${marketLabel(i, "en")} (new tab)`)}
                   >
-                    {t("去官网", "Shop")}
-                    <ArrowUpRight size={13} />
+                    <ArrowUpRight size={15} />
                   </a>
+                  <button
+                    className={"cat-add" + (added === i.id ? " done" : "")}
+                    disabled={!!blocked || adding === i.id}
+                    onClick={() => void add(i)}
+                    aria-label={added === i.id ? t("已放进家具栏", "On the shelf") : inRoom[i.id] ? t("再放一件", "Add another") : t("放进房间", "Put in the room")}
+                    title={added === i.id ? t("已放进家具栏", "On the shelf") : inRoom[i.id] ? t("再放一件", "Add another") : t("放进房间", "Put in the room")}
+                  >
+                    {adding === i.id ? <Loader2 className="spin" size={16} /> : added === i.id ? <Check size={16} /> : <Plus size={16} />}
+                  </button>
                 </div>
-                <button className={"cat-add" + (added === i.id ? " done" : "")} disabled={!!blocked || adding === i.id} onClick={() => void add(i)}>
-                  {adding === i.id ? <Loader2 className="spin" size={14} /> : added === i.id ? <Check size={14} /> : <Plus size={14} />}
-                  {added === i.id ? t("已放进家具栏", "On the shelf") : inRoom[i.id] ? t("再放一件", "Add another") : t("放进房间", "Put in the room")}
-                </button>
               </div>
             </article>
           ))}
@@ -254,13 +259,14 @@ export default function CatalogPanel({
           {lang === "en" ? (
             <>
               Prices are each brand&apos;s public price on its regional site, checked on{" "}
-              {new Date(pricing.verified + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}; other currencies are converted at the ECB rate of{" "}
-              {new Date(pricing.fx.rateDate + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric" })}. Shipping and duties are not included. All 20 come to about{" "}
+              {new Date(pricing.verified + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              {pricing.added && ` (the ${pricing.added.count} added pieces on ${new Date(pricing.added.verified + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric" })})`}; other currencies are converted at the ECB rate of{" "}
+              {new Date(pricing.fx.rateDate + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric" })}. Shipping and duties are not included. All {catalog.length} come to about{" "}
               {formatUSD(pricing.total)}. Product photos are from the brands&apos; sites; the 3D models are scaled to the listed sizes. Drag a card straight into the room.
             </>
           ) : (
             <>
-              价格是各品牌地区官网的公开标价，{pricing.verified.replace(/^(\d+)-0?(\d+)-0?(\d+)$/, "$1 年 $2 月 $3 日")}核对；非美元标价按欧洲央行 {pricing.fx.rateDate.replace(/^\d+-0?(\d+)-0?(\d+)$/, "$1 月 $2 日")}汇率换算。不含运费和关税，不是中国到手价。20 件参考合计 {formatUSD(pricing.total)}。产品图来自各品牌官网，3D 模型按标称尺寸缩放，卡片可以直接拖进房间。
+              价格是各品牌地区官网的公开标价，{pricing.verified.replace(/^(\d+)-0?(\d+)-0?(\d+)$/, "$1 年 $2 月 $3 日")}核对{pricing.added && `（新增的 ${pricing.added.count} 件 ${pricing.added.verified.replace(/^\d+-0?(\d+)-0?(\d+)$/, "$1 月 $2 日")}核对）`}；非美元标价按欧洲央行 {pricing.fx.rateDate.replace(/^\d+-0?(\d+)-0?(\d+)$/, "$1 月 $2 日")}汇率换算。不含运费和关税，不是中国到手价。{catalog.length} 件参考合计 {formatUSD(pricing.total)}。产品图来自各品牌官网，3D 模型按标称尺寸缩放，卡片可以直接拖进房间。
             </>
           )}
         </p>

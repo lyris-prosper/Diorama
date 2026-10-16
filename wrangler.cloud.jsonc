@@ -21,6 +21,9 @@
     "DAILY_ROOMS": "1",
     "DAILY_PIECES": "4",
     "DAILY_UPLOADS": "60",
+    // “帮我布置” requests (DeepSeek, a fraction of a cent each); without the DEEPSEEK_API_KEY secret
+    // the rules answer and nothing is spent.
+    "DAILY_PLANS": "20",
     // Credits the whole site may spend; generation stops there, the sample bedroom keeps working.
     "WORLDLABS_CREDIT_LIMIT": "2300",
     "TRIPO_CREDIT_LIMIT": "1400"

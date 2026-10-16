@@ -1,16 +1,74 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { ArrowRight, Upload } from "lucide-react";
+import { ArrowRight, ChevronsRight, Upload } from "lucide-react";
 import { useLang } from "@/lib/i18n";
+import { usePhone } from "@/lib/use-phone";
 import { ContinueCard, type SpaceSummary } from "./SpacesDialog";
 import { isOnlineDemo } from "@/lib/asset-url";
 import type { PublicSite } from "@/lib/types";
 
 const Maquette = dynamic(() => import("./Maquette"), { ssr: false, loading: () => <div className="maquette" /> });
 
+/**
+ * A track with a round knob: drag the knob to the end (or tap the track) to start. Keyboard users
+ * press it like any button.
+ */
+function SlideToStart({ label, onDone, disabled }: { label: string; onDone: () => void; disabled?: boolean }) {
+  const track = useRef<HTMLButtonElement>(null);
+  const drag = useRef<{ from: number; moved: boolean } | null>(null);
+  const [x, setX] = useState(0);
+  const [done, setDone] = useState(false);
+  const room = () => (track.current ? track.current.clientWidth - 62 : 0);
+  const finish = () => {
+    setX(room());
+    setDone(true);
+    setTimeout(onDone, 180);
+  };
+  return (
+    <button
+      ref={track}
+      className={"slide-start" + (drag.current ? " dragging" : "") + (done ? " done" : "")}
+      disabled={disabled}
+      aria-label={label}
+      onClick={() => {
+        // A drag ends with a click too; only a plain tap (or a key press) starts from here.
+        if (!drag.current?.moved && !done) finish();
+        drag.current = null;
+      }}
+      onPointerDown={(e) => {
+        if (disabled || done) return;
+        drag.current = { from: e.clientX - x, moved: false };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d) return;
+        const next = Math.max(0, Math.min(room(), e.clientX - d.from));
+        if (Math.abs(next - x) > 3) d.moved = true;
+        setX(next);
+      }}
+      onPointerUp={() => {
+        const d = drag.current;
+        if (!d?.moved) return;
+        if (x > room() * 0.8) finish();
+        else setX(0);
+      }}
+    >
+      <span className="slide-knob" style={{ transform: `translateX(${x}px)` }} aria-hidden="true">
+        <ArrowRight size={20} />
+      </span>
+      <span className="slide-label" style={{ opacity: Math.max(0, 1 - x / Math.max(1, room() * 0.6)) }}>
+        {label}
+      </span>
+      <ChevronsRight className="slide-chevrons" size={20} aria-hidden="true" />
+    </button>
+  );
+}
+
 // The home page: the promise in a sentence, one button, the diorama to play with. The Chinese page
-// says a little more; the English one stays short and lets the model speak.
+// says a little more; the English one stays short and lets the model speak. A phone gets a full-screen
+// room with the promise over it and a slider into the sample room instead of the model.
 export default function Landing({
   busy,
   spaces,
@@ -32,6 +90,7 @@ export default function Landing({
   site: PublicSite | null;
 }) {
   const { lang, t } = useLang();
+  const phone = usePhone();
   const online = isOnlineDemo();
   const samples = online || !!site;
   const [over, setOver] = useState(false);
@@ -62,6 +121,37 @@ export default function Landing({
       }}
     >
       <div className="landing-glow" aria-hidden="true" />
+      {phone && (
+        <section className={"phone-hero lang-" + lang} key={"hero-" + lang}>
+          <img src="/landing/hero.webp" alt="" />
+          <div className="phone-hero-copy">
+            <p className="phone-kicker">{t("方寸 · 一张照片里的家", "Diorama · a room from one photo")}</p>
+            {lang === "en" ? (
+              <h1>
+                Rearrange your room <em>without lifting a finger.</em>
+              </h1>
+            ) : (
+              <h1>
+                方寸之间，
+                <br />
+                摆出<em>心里的家</em>。
+              </h1>
+            )}
+            <p className="phone-sub">
+              {t("一张房间照片，变成能走进去的 3D 房间；家具库里的真实好物，先摆上看看。", "One photo of your room becomes a 3D space to step into. Try real furniture in it before you buy.")}
+            </p>
+            <SlideToStart
+              label={samples ? t("滑动，走进示例卧室", "Slide into the sample bedroom") : t("滑动，看看示例房间", "Slide to see a sample room")}
+              onDone={onDemo}
+              disabled={busy}
+            />
+            <button className="phone-upload" disabled={busy} onClick={onUpload}>
+              <Upload size={15} />
+              {t("或者上传你的房间照片", "Or upload a photo of your room")}
+            </button>
+          </div>
+        </section>
+      )}
       {/* Keyed by language: switching replays the entrance, a soft cross-fade. */}
       <div className={"landing-copy lang-" + lang} key={lang}>
         {lang === "en" ? (
@@ -78,11 +168,9 @@ export default function Landing({
           <>
             <p className="kicker">方寸 · 一张照片里的家</p>
             <h1 className="hero">
+              <span className="line">方寸之间，</span>
               <span className="line">
-                不用搬，就能<em>换个摆法</em>；
-              </span>
-              <span className="line">
-                不用买，就能<em>先摆上看看</em>。
+                摆出<em>心里的家</em>。
               </span>
             </h1>
             <p className="lede">
@@ -118,9 +206,7 @@ export default function Landing({
           </div>
         )}
       </div>
-      <div className="landing-model">
-        <Maquette />
-      </div>
+      {phone !== true && <div className="landing-model">{phone === false && <Maquette />}</div>}
       <ol className={"process lang-" + lang}>
         {steps.map(([title, text], i) => (
           <li key={title} style={{ animationDelay: `${0.5 + i * 0.08}s` }}>

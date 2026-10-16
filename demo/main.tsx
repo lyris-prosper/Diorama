@@ -2,7 +2,7 @@
 // API answered in the browser (lib/demo-backend.ts) instead of by the local server.
 import "@fontsource-variable/fraunces/full.css";
 import "@fontsource-variable/fraunces/full-italic.css";
-import "@fontsource-variable/figtree";
+import "@fontsource-variable/noto-serif-sc";
 import "../app/globals.css";
 import { createRoot } from "react-dom/client";
 import { installDemoBackend } from "@/lib/demo-backend";

@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-// Latin type, bundled so the page looks the same offline: Fraunces (upright and its true italic)
-// for headings, Figtree for text.
-// Chinese uses the Mac's own Songti and PingFang.
+// Type, bundled so the page looks the same offline: Fraunces (upright and its true italic) for
+// Latin, Noto Serif SC for Chinese where the system has no Songti (phones, Windows). The Chinese
+// font comes in slices by character range; a page loads only the slices its text uses.
 import "@fontsource-variable/fraunces/full.css";
 import "@fontsource-variable/fraunces/full-italic.css";
-import "@fontsource-variable/figtree";
+import "@fontsource-variable/noto-serif-sc";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "方寸 Diorama",
-  description: "不用搬，就能换个摆法；不用买，就能先摆上看看。Rearrange your room without lifting a finger. Try it before you buy it.",
+  description: "方寸之间，摆出心里的家。Rearrange your room without lifting a finger. Try it before you buy it.",
   icons: { icon: "/favicon.svg" },
 };
 export default function Layout({ children }: { children: React.ReactNode }) {

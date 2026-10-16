@@ -49,6 +49,7 @@ export const daily = () => ({
   world: count("DAILY_ROOMS", 1),
   furniture: count("DAILY_PIECES", 4),
   upload: count("DAILY_UPLOADS", 60),
+  plan: count("DAILY_PLANS", 20),
 });
 export const MAX_SPACES = 10;
 /**
@@ -88,3 +89,14 @@ export const usedUp = (kind: "world" | "furniture" | "upload") =>
       );
 export const siteSpent = () =>
   say("这个网站的免费生成额度已经全部用完了；示例卧室和家具库还可以继续体验。", "The site's free generations are all used up. The sample bedroom and the library still work.");
+/** One “帮我布置” request (a DeepSeek call) counted against the visitor's day; none locally. */
+export async function takePlan(db: D1Database, who: Who) {
+  if (!isPublic()) return;
+  const row = await db
+    .prepare("SELECT COUNT(*) AS n FROM submissions WHERE kind='plan' AND created>? AND (owner=? OR client=?)")
+    .bind(Date.now() - DAY, who.user, who.client)
+    .first<{ n: number }>();
+  if ((row?.n ?? 0) >= daily().plan)
+    throw say(`今天的“帮我布置”已经用了 ${daily().plan} 次，明天再来吧。`, `That's ${daily().plan} arrangements today. Come back tomorrow.`);
+  await db.prepare("INSERT INTO submissions(id,owner,client,kind,created) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(), who.user, who.client, "plan", Date.now()).run();
+}

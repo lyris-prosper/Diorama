@@ -4,8 +4,22 @@
 // pendant lamp to add to the room; the same photos get those models back instead of new Tripo jobs.
 // Shared by the server (lib/server/demo.ts) and the page (prefilled erase box, reuse notice).
 
+import type { Spot } from "./arrange";
+
 export type Bi = { zh: string; en: string };
 type Vec3 = [number, number, number];
+
+// The room's own frame for placing things: the walls turn 20° from the scan's axes (lib/placement.ts
+// wallHeading finds the same). u runs along the left wall towards the camera, n across to the right
+// wall; the bed's head is under the window at u ≈ −5, its foot at u ≈ −2.8; the walls are at n ≈ −0.57
+// (left) and n ≈ 2.45 (right, desk and wardrobe); the desk top is 0.75 m high at u −4.1…−2.7.
+const FLOOR = -1.23;
+const H = (20 * Math.PI) / 180;
+const r3 = (v: number) => Math.round(v * 1000) / 1000;
+/** A point u, n in the wall frame, h metres above the floor. */
+const at = (u: number, n: number, h = 0): Vec3 => [r3(u * Math.sin(H) + n * Math.cos(H)), r3(FLOOR + h), r3(u * Math.cos(H) - n * Math.sin(H))];
+/** Turns that face a piece's front towards the camera, the window, the right wall or the left wall. */
+const FACE = { camera: r3(H), window: r3(H + Math.PI), right: r3(H + Math.PI / 2), left: r3(H - Math.PI / 2) };
 
 /** Hamming distance between two 64-bit hex photo prints (lib: photoPrint in Workbench.tsx). */
 export function printDistance(a: string, b: string) {
@@ -59,6 +73,25 @@ export const DEMO_ROOM = {
       url: "https://cdn.marble.worldlabs.ai/3d1295b4-e546-42e0-8f51-b878ff47b05a/74ddc85c-1dea-4bed-aee1-0efd5a63e338_ceramic.spz",
     },
   ],
+  /** The room in a sentence, for the stylist model (“帮我布置”). */
+  description:
+    "A rented bedroom about 3 m wide and 5 m deep, seen from the door: a double bed against the left wall with its head under the window, a wooden desk on the right wall by the window, a tall wardrobe on the right near the door; bare walls and an empty wooden floor.",
+  /** Hand-set places for “帮我布置”, in the order they are filled; each faces into the room. */
+  spots: [
+    // On the floor, like a rug dropped by hand: the 3D view keeps the scan's floor from showing through.
+    { id: "rug", zone: "floor", label: { zh: "床和书桌之间的地面（地毯）", en: "floor between the bed and the desk (a rug)" }, position: at(-3.25, 1.2), rotation: FACE.camera, suits: "rug|地毯" },
+    { id: "window-corner", zone: "floor", label: { zh: "窗边、书桌旁的角落", en: "corner by the window, next to the desk" }, position: at(-4.55, 2.05), rotation: FACE.left, suits: "plant|绿植|植物|floor-lamp|落地灯", room: 110 },
+    { id: "reading", zone: "floor", label: { zh: "右侧衣柜前（单椅）", en: "right side, in front of the wardrobe (a chair)" }, position: at(-2.35, 1.85), rotation: FACE.left, suits: "armchair|lounge|chair|椅", room: 90 },
+    { id: "chair-light", zone: "floor", label: { zh: "单椅旁（落地灯）", en: "beside that chair (a floor lamp)" }, position: at(-1.8, 2.15), rotation: FACE.left, suits: "lamp|灯", room: 65 },
+    { id: "bed-foot", zone: "floor", label: { zh: "床尾", en: "at the foot of the bed" }, position: at(-2.45, 0.45), rotation: FACE.camera, suits: "bench|ottoman|stool|凳", room: 130 },
+    { id: "bedside", zone: "floor", label: { zh: "床头右侧，窗下", en: "right of the bed's head, under the window" }, position: at(-4.95, 1.4), rotation: FACE.left, suits: "side-table|bedside|nightstand|床边|床头", room: 45 },
+    { id: "desk-left", zone: "top", label: { zh: "书桌靠窗一端", en: "on the desk, window end" }, position: at(-3.85, 2.2, 0.75), rotation: FACE.left, suits: "lamp|灯" },
+    { id: "desk-right", zone: "top", label: { zh: "书桌靠门一端", en: "on the desk, door end" }, position: at(-3.05, 2.15, 0.75), rotation: FACE.left },
+    { id: "bed-top", zone: "top", label: { zh: "床头的床面", en: "on the bed, by the pillows" }, position: at(-4.7, 0.45, 0.55), rotation: FACE.camera, suits: "cushion|pillow|靠垫|抱枕" },
+    { id: "wall-desk", zone: "wall", label: { zh: "书桌上方的墙", en: "wall above the desk" }, position: at(-3.5, 2.43, 1.2), rotation: FACE.left, suits: "art|frame|picture|poster|画" },
+    { id: "wall-bed", zone: "wall", label: { zh: "床边的左墙", en: "left wall beside the bed" }, position: at(-3.9, -0.55, 1.2), rotation: FACE.right },
+    { id: "wall-foot", zone: "wall", label: { zh: "床尾的左墙", en: "left wall by the foot of the bed" }, position: at(-2.3, -0.55, 1.35), rotation: FACE.right },
+  ] satisfies Spot[] as Spot[],
   /** Furniture of this room that was already generated, with the box that erases it from the scan. */
   furniture: [
     {

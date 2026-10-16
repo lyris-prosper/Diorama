@@ -3,7 +3,7 @@
 Try it online: <https://diorama.3dspace.workers.dev>
 
 > Rearrange your room without lifting a finger. Try it before you buy it.
-> 不用搬，就能换个摆法；不用买，就能先摆上看看。
+> 方寸之间，摆出心里的家。
 
 [中文说明](README.md)
 
@@ -104,7 +104,7 @@ To try the production build first: `npm run preview:cloud`, then open <http://lo
   - Pendant lights hang from the ceiling: pieces of the kind “pendant light” or with “pendant / 吊灯” in their name hang under the ceiling where you point and slide along it when dragged. The ceiling height comes from the room scan, lower soffits included. Any piece can be switched to **Hang** in its panel.
   - When the typed size disagrees strongly with the photo's proportions (only the shade's height given for a lamp with a rod), the model is scaled evenly and keeps its shape; the panel marks it “photo proportions”.
 - **Furniture library**:
-  - 20 real products with 3D models, sizes, USD reference prices, shop links and stock notes.
+  - 30 real products with 3D models, sizes, USD reference prices, shop links and stock notes. Ten of them are the large pieces added for the sample bedroom: a big rug, a floor plant, a floor lamp, an armchair, a rattan bench, two pictures, a bedside lamp, a standing mirror and a bookcase.
   - Drag them into the room; the shelf shows the total for the library pieces in the room.
   - *Find me* understands requests such as “a desk no wider than 1 m”, “a lamp under $50” or “small things under 500 yuan”.
 - **Add furniture**: upload photos of pieces that are not in the room; Tripo makes each one in high detail (H3.1, detailed geometry, 8K PBR textures) and it is placed true to size. The room shows a 4K copy (200k–400k triangles); the 8K original is kept and can be downloaded from the piece's panel. Older pieces can be **regenerated in HD** from the shelf or the panel; the old model stays until the new one is ready.
@@ -152,6 +152,7 @@ npm run lint
 - `node tests/local-workflow.mjs`: needs the app running and about 3 GB of free memory; runs the real recognition and repair models in a new test space (delete it afterwards on the home page).
 - `node tests/recognition-smoke.mjs`: runs the shipped recognition models on two reference pictures, no server needed.
 - `npm run catalog`: maintains the furniture library (`scripts/build-catalog.mjs`); `--images <folder>` rebuilds the card pictures from official product photos.
+- `node scripts/tripo-catalog.mjs --images <folder>`: generates source models with Tripo for library entries that have none yet (about 70 credits each). Without `--yes` it only lists the entries, the estimate and the balance; nothing paid is submitted.
 
 ## Main files
 

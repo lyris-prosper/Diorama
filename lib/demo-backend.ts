@@ -8,6 +8,7 @@
 // lib/server/furniture.ts) over a plain store, so it can be tested without a browser.
 import { DEMO_ROOM, demoPieceFor, isDefaultName, isDemoPhoto, printDistance, shaOfKey } from "./demo-room";
 import { catalogItem } from "./catalog";
+import { rulePlan } from "./arrange";
 import { emptyProject, MAX_ITEMS, type Item, type Project } from "./types";
 import { setAssetResolver } from "./asset-url";
 
@@ -123,6 +124,22 @@ export function createDemoServer(store: DemoStore) {
       return p;
     }
     const p = get(b.id);
+    /** A library piece into this space, where the page put it (or onto the shelf); its id. */
+    const addOne = (x: Body) => {
+      const c = catalogItem(String(x.catalogId ?? ""));
+      if (!c?.model || !c.modelHeight) throw say("家具库里没有这件家具。", "That piece isn't in the library.");
+      if (p.mode === "real" && !p.room) throw say("先生成或导入 3D 房间，再从家具库挑选。", "Generate or import the 3D room first, then pick from the library.");
+      if (p.items.length >= MAX_ITEMS) throw say(`一个空间最多放 ${MAX_ITEMS} 件家具。`, `A space holds up to ${MAX_ITEMS} pieces.`);
+      const at = x.position === undefined ? null : point(x.position);
+      if (x.position !== undefined && !at) throw say("放置位置无效。", "That spot isn't valid.");
+      const turn = at && typeof x.rotation === "number" && Number.isFinite(x.rotation) && Math.abs(x.rotation) <= 2 * Math.PI ? x.rotation : 0;
+      const item: Item = {
+        id: crypto.randomUUID(), name: c.name, kind: c.kind, status: at ? "placed" : "ready", position: at ?? [0, p.floor.height, 0],
+        rotation: turn, scale: 1, height: c.modelHeight, dims: c.dims, model: c.model, thumbnail: c.image, source: "catalog", catalogId: c.id,
+      };
+      p.items.push(item);
+      return item.id;
+    };
     switch (b.action) {
       case "rename": {
         const name = String(b.name ?? "").trim().slice(0, 40);
@@ -264,20 +281,20 @@ export function createDemoServer(store: DemoStore) {
           : `${n} 张照片之前已生成过 3D 模型，直接复用，未消耗积分。`;
         return { ...(await save(p)), note, added };
       }
+      case "plan-layout": {
+        // Only the rules here: the online demo has no server to ask a model.
+        const text = String(b.text ?? "").trim().slice(0, 200);
+        if (!text) throw say("说一句想要的样子，比如“温馨一点的卧室”。", "Say what you'd like, for example “a cozy bedroom”.");
+        return rulePlan(text, p.room?.preset === DEMO_ROOM.id ? DEMO_ROOM.spots : null, lang);
+      }
       case "add-catalog-item": {
-        const c = catalogItem(String(b.catalogId ?? ""));
-        if (!c?.model || !c.modelHeight) throw say("家具库里没有这件家具。", "That piece isn't in the library.");
-        if (p.mode === "real" && !p.room) throw say("先生成或导入 3D 房间，再从家具库挑选。", "Generate or import the 3D room first, then pick from the library.");
-        if (p.items.length >= MAX_ITEMS) throw say(`一个空间最多放 ${MAX_ITEMS} 件家具。`, `A space holds up to ${MAX_ITEMS} pieces.`);
-        const at = b.position === undefined ? null : point(b.position);
-        if (b.position !== undefined && !at) throw say("放置位置无效。", "That spot isn't valid.");
-        const turn = at && typeof b.rotation === "number" && Number.isFinite(b.rotation) && Math.abs(b.rotation) <= 2 * Math.PI ? b.rotation : 0;
-        const item: Item = {
-          id: crypto.randomUUID(), name: c.name, kind: c.kind, status: at ? "placed" : "ready", position: at ?? [0, p.floor.height, 0],
-          rotation: turn, scale: 1, height: c.modelHeight, dims: c.dims, model: c.model, thumbnail: c.image, source: "catalog", catalogId: c.id,
-        };
-        p.items.push(item);
-        return { ...(await save(p)), added: item.id };
+        if (Array.isArray(b.items)) {
+          const added: string[] = [];
+          for (const x of (b.items as Body[]).slice(0, 12)) added.push(addOne(x));
+          return { ...(await save(p)), added };
+        }
+        const added = addOne(b);
+        return { ...(await save(p)), added };
       }
       case "update-erasure": {
         const e = b.erasure ?? {};

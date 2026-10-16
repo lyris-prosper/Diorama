@@ -53,8 +53,10 @@ export type Pricing = {
   currency: "USD";
   /** Date the prices were checked on the official sites. */
   verified: string;
+  /** Pieces added later, checked on their own date. */
+  added?: { count: number; verified: string };
   fx: { provider: string; rateDate: string; source: string; usdPer: Record<string, number> };
-  /** Sum of all 20 reference prices. */
+  /** Sum of all the reference prices. */
   total: number;
   note: string;
   noteEn: string;

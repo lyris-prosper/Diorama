@@ -104,6 +104,8 @@ export function normalize(text: string) {
     .toLowerCase()
     .replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
     .replace(/[，。；！？、]/g, (c) => ({ "，": ",", "。": ".", "；": ";", "！": "!", "？": "?", "、": "," })[c] ?? c)
+    // “一块地毯” counts a rug, not one yuan: 块 straight before a noun is a measure word.
+    .replace(/([一两二三四五六七八九几])块(?=[\u4e00-\u9fff])(?!钱|以|之|左|上|下|内|多|到|至|的|出头|人民币)/g, "$1件")
     .replace(new RegExp(`([零〇一二两三四五六七八九十百千万]+|半)(?=\\s*${UNIT})`, "g"), (m) => String(cnNumber(m)))
     .replace(/(预算|价格|价位)([零〇一二两三四五六七八九十百千万]+)/g, (_, a, n) => a + cnNumber(n))
     .replace(/(\d+)\s*米\s*([一二三四五六七八九]|\d)(?![\d.]|\s*(?:厘米|公分|cm))/g, (_, a, b) => `${a}.${CN[b] ?? b}米`)

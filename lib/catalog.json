@@ -1,9 +1,13 @@
 {
-  "updated": "2026-10-05",
+  "updated": "2026-10-16",
   "note": "price 为美元参考价（见 pricing），link 为品牌地区官网的商品页。model / modelSize / modelHeight 由 scripts/build-catalog.mjs 生成。",
   "pricing": {
     "currency": "USD",
     "verified": "2026-10-05",
+    "added": {
+      "count": 10,
+      "verified": "2026-10-16"
+    },
     "fx": {
       "provider": "European Central Bank",
       "rateDate": "2026-10-02",
@@ -18,7 +22,7 @@
         "CNY": 0.1491515965
       }
     },
-    "total": 1350.08,
+    "total": 2212.9,
     "note": "各品牌地区官网公开的单件标价；非美元标价按欧洲央行 2026-10-02 参考汇率换算成美元。不含运费、进口关税与另售配件，不是中国到手价，也不是结算报价。",
     "noteEn": "Each brand's public single-item price on its regional site; non-dollar prices converted at the ECB reference rate of 2026-10-02. Excludes shipping, import duties and accessories sold separately; not a price in China, nor a checkout quote."
   },
@@ -960,6 +964,492 @@
         "h": 9.3
       },
       "modelHeight": 0.0927
+    },
+    {
+      "id": "telegraflinje-rug",
+      "name": "TELEGRAFLINJE 黄米色大地毯",
+      "nameEn": "TELEGRAFLINJE flatwoven rug, yellow-beige",
+      "shop": "IKEA",
+      "category": "textile",
+      "kind": "rug",
+      "dims": {
+        "w": 170,
+        "d": 240,
+        "h": 0.5
+      },
+      "dimsLabel": "170 × 240 cm",
+      "price": 98.93,
+      "link": "https://www.ikea.com/se/en/p/telegraflinje-rug-flatwoven-yellow-beige-50555281/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 995,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "黄米色格纹平织，棉 170×240cm",
+      "variantEn": "Yellow-beige pattern, flatwoven cotton, 170×240 cm",
+      "sku": "505.552.81",
+      "tags": [
+        "cotton",
+        "cream",
+        "warm",
+        "bedroom",
+        "living",
+        "nordic"
+      ],
+      "image": "/catalog/images/telegraflinje-rug.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/telegraflinje-rug-flatwoven-yellow-beige__1185071_pe898252_s5.jpg",
+      "source": {
+        "file": "telegraflinje-rug.glb",
+        "fit": "stretch"
+      },
+      "known": [
+        "w",
+        "d",
+        "h"
+      ],
+      "model": "/catalog/models/telegraflinje-rug.glb",
+      "modelSize": {
+        "w": 170,
+        "d": 240,
+        "h": 0.5
+      },
+      "modelHeight": 0.005
+    },
+    {
+      "id": "fejka-plant",
+      "name": "FEJKA 天堂鸟仿真绿植",
+      "nameEn": "FEJKA artificial plant, bird of paradise",
+      "shop": "IKEA",
+      "category": "decor",
+      "kind": "plant",
+      "dims": {
+        "w": 105,
+        "d": 82,
+        "h": 180
+      },
+      "dimsLabel": "盆径 23 × 高 180 cm",
+      "dimsLabelEn": "Pot Ø 23 × H 180 cm",
+      "price": 79.44,
+      "link": "https://www.ikea.com/se/en/p/fejka-artificial-potted-plant-in-outdoor-bird-of-paradise-70610601/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 799,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "天堂鸟，仿真植物，带 23 cm 种植盆",
+      "variantEn": "Bird of paradise, artificial, in a 23 cm pot",
+      "sku": "706.106.01",
+      "tags": [
+        "green",
+        "bedroom",
+        "living",
+        "warm"
+      ],
+      "image": "/catalog/images/fejka-plant.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/fejka-artificial-potted-plant-in-outdoor-bird-of-paradise__1034065_pe840176_s5.jpg",
+      "source": {
+        "file": "fejka-plant.glb"
+      },
+      "known": [
+        "h"
+      ],
+      "model": "/catalog/models/fejka-plant.glb",
+      "modelSize": {
+        "w": 105.4,
+        "d": 82.4,
+        "h": 180
+      },
+      "modelHeight": 1.8
+    },
+    {
+      "id": "lauters-floor-lamp",
+      "name": "LAUTERS 白蜡木落地灯",
+      "nameEn": "LAUTERS floor lamp, ash/white",
+      "shop": "IKEA",
+      "category": "lighting",
+      "kind": "floor-lamp",
+      "dims": {
+        "w": 62,
+        "d": 62,
+        "h": 151
+      },
+      "dimsLabel": "底座直径 62 × 高 119–151 cm",
+      "dimsLabelEn": "Base Ø 62 × H 119–151 cm",
+      "price": 59.56,
+      "link": "https://www.ikea.com/se/en/p/lauters-floor-lamp-ash-white-30405042/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 599,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "白蜡木三脚架 / 白色布灯罩",
+      "variantEn": "Ash tripod / white fabric shade",
+      "sku": "304.050.42",
+      "buyNote": "灯泡另购",
+      "buyNoteEn": "Bulb sold separately",
+      "tags": [
+        "wood",
+        "ash",
+        "nordic",
+        "bedroom",
+        "living",
+        "warm",
+        "minimal"
+      ],
+      "image": "/catalog/images/lauters-floor-lamp.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/lauters-floor-lamp-ash-white__0663863_pe712536_s5.jpg",
+      "source": {
+        "file": "lauters-floor-lamp.glb"
+      },
+      "model": "/catalog/models/lauters-floor-lamp.glb",
+      "modelSize": {
+        "w": 80.2,
+        "d": 52.5,
+        "h": 151
+      },
+      "modelHeight": 1.51
+    },
+    {
+      "id": "poang-armchair",
+      "name": "POÄNG 桦木扶手椅",
+      "nameEn": "POÄNG armchair, birch veneer/Knisa light beige",
+      "shop": "IKEA",
+      "category": "furniture",
+      "kind": "chair",
+      "dims": {
+        "w": 68,
+        "d": 82,
+        "h": 100
+      },
+      "dimsLabel": "68 × 82 × 100 cm",
+      "price": 79.44,
+      "link": "https://www.ikea.com/se/en/p/poaeng-armchair-birch-veneer-knisa-light-beige-s39240787/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 799,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "桦木贴面 / Knisa 浅米色坐垫",
+      "variantEn": "Birch veneer / Knisa light beige cushion",
+      "sku": "392.407.87",
+      "buyNote": "官网限时价，至 2026-10-30；平时 SEK 995",
+      "buyNoteEn": "Limited-time price until 2026-10-30; regularly SEK 995",
+      "tags": [
+        "wood",
+        "nordic",
+        "cream",
+        "bedroom",
+        "living",
+        "warm"
+      ],
+      "image": "/catalog/images/poang-armchair.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/poaeng-armchair-birch-veneer-knisa-light-beige__0571500_pe666933_s5.jpg",
+      "source": {
+        "file": "poang-armchair.glb"
+      },
+      "model": "/catalog/models/poang-armchair.glb",
+      "modelSize": {
+        "w": 68,
+        "d": 83.1,
+        "h": 98.9
+      },
+      "modelHeight": 0.9894
+    },
+    {
+      "id": "tolkning-bench",
+      "name": "TOLKNING 藤编床尾凳",
+      "nameEn": "TOLKNING storage bench, handmade rattan",
+      "shop": "IKEA",
+      "category": "furniture",
+      "kind": "bench",
+      "dims": {
+        "w": 120,
+        "d": 37,
+        "h": 46
+      },
+      "dimsLabel": "120 × 37 × 46 cm",
+      "price": 198.35,
+      "link": "https://www.ikea.com/se/en/p/tolkning-bench-with-storage-handmade-rattan-80512657/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 1995,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "手工藤编，凳面下可收纳",
+      "variantEn": "Handmade rattan, storage under the seat",
+      "sku": "805.126.57",
+      "tags": [
+        "rattan",
+        "warm",
+        "bedroom",
+        "living",
+        "japanese"
+      ],
+      "image": "/catalog/images/tolkning-bench.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/tolkning-bench-with-storage-handmade-rattan__1098691_pe865484_s5.jpg",
+      "source": {
+        "file": "tolkning-bench.glb"
+      },
+      "model": "/catalog/models/tolkning-bench.glb",
+      "modelSize": {
+        "w": 120,
+        "d": 40.7,
+        "h": 45.3
+      },
+      "modelHeight": 0.4527
+    },
+    {
+      "id": "giverny-picture",
+      "name": "BLODFLÄDER 莫奈风景挂画",
+      "nameEn": "BLODFLÄDER picture, The Seine at Giverny",
+      "shop": "IKEA",
+      "category": "decor",
+      "kind": "picture",
+      "dims": {
+        "w": 120,
+        "d": 3,
+        "h": 80
+      },
+      "dimsLabel": "120 × 80 cm（含框）",
+      "dimsLabelEn": "120 × 80 cm, framed",
+      "price": 69.5,
+      "link": "https://www.ikea.com/se/en/p/blodflaeder-picture-the-seine-at-giverny-20601915/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 699,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "莫奈《吉维尼的塞纳河》，画面 118×78cm",
+      "variantEn": "Monet, The Seine at Giverny; image 118×78 cm",
+      "sku": "206.019.15",
+      "tags": [
+        "wall",
+        "green",
+        "bedroom",
+        "living",
+        "retro"
+      ],
+      "image": "/catalog/images/giverny-picture.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/blodflaeder-picture-the-seine-at-giverny__1392143_pe966004_s5.jpg",
+      "source": {
+        "file": "giverny-picture-flat.glb",
+        "fit": "stretch"
+      },
+      "wall": true,
+      "known": [
+        "w",
+        "d",
+        "h"
+      ],
+      "model": "/catalog/models/giverny-picture.glb",
+      "modelSize": {
+        "w": 120,
+        "d": 3,
+        "h": 80
+      },
+      "modelHeight": 0.8
+    },
+    {
+      "id": "orange-flower-picture",
+      "name": "BLODFLÄDER 橙花挂画",
+      "nameEn": "BLODFLÄDER picture, orange flower",
+      "shop": "IKEA",
+      "category": "decor",
+      "kind": "picture",
+      "dims": {
+        "w": 42,
+        "d": 3,
+        "h": 52
+      },
+      "dimsLabel": "42 × 52 cm（含框）",
+      "dimsLabelEn": "42 × 52 cm, framed",
+      "price": 29.73,
+      "link": "https://www.ikea.com/se/en/p/blodflaeder-picture-orange-flower-40601919/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 299,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "画面 40×50cm，原木色画框",
+      "variantEn": "Image 40×50 cm, natural wood frame",
+      "sku": "406.019.19",
+      "tags": [
+        "wall",
+        "amber",
+        "accent",
+        "bedroom"
+      ],
+      "image": "/catalog/images/orange-flower-picture.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/blodflaeder-picture-orange-flower__1392146_pe966010_s5.jpg",
+      "source": {
+        "file": "orange-flower-picture.glb"
+      },
+      "wall": true,
+      "known": [
+        "w",
+        "h"
+      ],
+      "model": "/catalog/models/orange-flower-picture.glb",
+      "modelSize": {
+        "w": 41.9,
+        "d": 4.1,
+        "h": 52.1
+      },
+      "modelHeight": 0.5212
+    },
+    {
+      "id": "blidvader-lamp",
+      "name": "BLIDVÄDER 陶瓷台灯",
+      "nameEn": "BLIDVÄDER table lamp, off-white ceramic",
+      "shop": "IKEA",
+      "category": "lighting",
+      "kind": "lamp",
+      "dims": {
+        "w": 30,
+        "d": 30,
+        "h": 50
+      },
+      "dimsLabel": "灯罩直径 30 × 高 50 cm",
+      "dimsLabelEn": "Shade Ø 30 × H 50 cm",
+      "price": 69.5,
+      "link": "https://www.ikea.com/se/en/p/blidvaeder-table-lamp-off-white-ceramic-beige-80501258/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 699,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "米白陶瓷底座 / 米色布灯罩",
+      "variantEn": "Off-white ceramic base / beige fabric shade",
+      "sku": "805.012.58",
+      "buyNote": "灯泡另购",
+      "buyNoteEn": "Bulb sold separately",
+      "tags": [
+        "white",
+        "cream",
+        "bedroom",
+        "warm",
+        "minimal"
+      ],
+      "image": "/catalog/images/blidvader-lamp.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/blidvaeder-table-lamp-off-white-ceramic-beige__1059594_pe849715_s5.jpg",
+      "source": {
+        "file": "blidvader-lamp.glb"
+      },
+      "model": "/catalog/models/blidvader-lamp.glb",
+      "modelSize": {
+        "w": 30,
+        "d": 30,
+        "h": 48.6
+      },
+      "modelHeight": 0.4859
+    },
+    {
+      "id": "ikornnes-standing-mirror",
+      "name": "IKORNNES 白蜡木落地镜",
+      "nameEn": "IKORNNES standing mirror, ash",
+      "shop": "IKEA",
+      "category": "decor",
+      "kind": "mirror",
+      "dims": {
+        "w": 52,
+        "d": 52,
+        "h": 167
+      },
+      "dimsLabel": "52 × 52 × 167 cm",
+      "price": 98.93,
+      "link": "https://www.ikea.com/se/en/p/ikornnes-standing-mirror-ash-30298396/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 995,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "白蜡木原色 52×167cm",
+      "variantEn": "Natural ash, 52×167 cm",
+      "sku": "302.983.96",
+      "tags": [
+        "wood",
+        "ash",
+        "nordic",
+        "bedroom",
+        "minimal"
+      ],
+      "image": "/catalog/images/ikornnes-standing-mirror.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/ikornnes-standing-mirror-ash__0633524_pe695900_s5.jpg",
+      "source": {
+        "file": "ikornnes-standing-mirror.glb",
+        "fit": "stretch"
+      },
+      "model": "/catalog/models/ikornnes-standing-mirror.glb",
+      "modelSize": {
+        "w": 52,
+        "d": 52,
+        "h": 167
+      },
+      "modelHeight": 1.67,
+      "known": [
+        "w",
+        "d",
+        "h"
+      ]
+    },
+    {
+      "id": "billy-bookcase",
+      "name": "BILLY 橡木纹书架",
+      "nameEn": "BILLY bookcase, oak effect",
+      "shop": "IKEA",
+      "category": "furniture",
+      "kind": "bookcase",
+      "dims": {
+        "w": 80,
+        "d": 28,
+        "h": 202
+      },
+      "dimsLabel": "80 × 28 × 202 cm",
+      "price": 79.44,
+      "link": "https://www.ikea.com/se/en/p/billy-bookcase-oak-effect-10508932/",
+      "market": "SE",
+      "marketName": "瑞典",
+      "marketNameEn": "Sweden",
+      "originalPrice": 799,
+      "originalCurrency": "SEK",
+      "availability": "in_stock",
+      "variant": "橡木纹 80×28×202cm",
+      "variantEn": "Oak effect, 80×28×202 cm",
+      "sku": "105.089.32",
+      "tags": [
+        "wood",
+        "nordic",
+        "study",
+        "living",
+        "display"
+      ],
+      "image": "/catalog/images/billy-bookcase.webp",
+      "officialImage": "https://www.ikea.com/se/en/images/products/billy-bookcase-oak-effect__1590287_pe1038926_s5.jpg",
+      "source": {
+        "file": "billy-bookcase.glb",
+        "fit": "stretch"
+      },
+      "model": "/catalog/models/billy-bookcase.glb",
+      "modelSize": {
+        "w": 80,
+        "d": 28,
+        "h": 202
+      },
+      "modelHeight": 2.02,
+      "known": [
+        "w",
+        "d",
+        "h"
+      ]
     }
   ]
 }

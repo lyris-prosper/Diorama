@@ -41,6 +41,38 @@
 - **3D 模型**：用户提供的 20 个 Tripo 导出 GLB（`../20款产品3D模型/`）。`scripts/build-catalog.mjs` 只做方向修正、按标称尺寸等比缩放、贴图压到 1024 px WebP、meshopt 压缩，不重新生成。160 MB 压到 6.2 MB。
 - **工具**：@gltf-transform 4.5（MIT）、meshoptimizer 1.3（MIT）、sharp（Apache-2.0）。浏览器端用 three.js 自带的 `meshopt_decoder` 解码。
 
+## 家具库新增 10 件（2026-10-16）
+
+给示例卧室补的大件，让“帮我布置”能把空房间布置完整。家具库共 30 件，参考合计 $2,212.90。
+
+- **来源**：都来自 IKEA 瑞典官网（英文版）的商品页，2026-10-16 核对。商品图、标价、尺寸、货号都取自同一页面；库存取商品页结构化数据里的 InStock，不代表某个地址或门店能买到。
+- **价格**：SEK 标价按上面同一个欧洲央行 2026-10-02 汇率换成美元（1 SEK ≈ $0.0994，四舍五入到分）。10 件合计 SEK 8,678，即 $862.82。
+  - POÄNG 的 SEK 799 是官网公开的限时价（2026-09-01 至 10-30，不需要会员），平时 SEK 995，条目里写明。
+  - 两盏灯都不含灯泡。
+
+| 编号 | 条目 | 商品 | 标价 | 美元 | 尺寸（cm） |
+|---|---|---|---|---|---|
+| 21 | `telegraflinje-rug` | [TELEGRAFLINJE 平织地毯，黄米色](https://www.ikea.com/se/en/p/telegraflinje-rug-flatwoven-yellow-beige-50555281/) | SEK 995 | $98.93 | 170 × 240 |
+| 22 | `fejka-plant` | [FEJKA 仿真盆栽，天堂鸟](https://www.ikea.com/se/en/p/fejka-artificial-potted-plant-in-outdoor-bird-of-paradise-70610601/) | SEK 799 | $79.44 | 盆径 23 × 高 180 |
+| 23 | `lauters-floor-lamp` | [LAUTERS 落地灯，白蜡木/白色](https://www.ikea.com/se/en/p/lauters-floor-lamp-ash-white-30405042/) | SEK 599 | $59.56 | 底座直径 62 × 高 119–151 |
+| 24 | `poang-armchair` | [POÄNG 扶手椅，桦木贴面/Knisa 浅米色](https://www.ikea.com/se/en/p/poaeng-armchair-birch-veneer-knisa-light-beige-s39240787/) | SEK 799 | $79.44 | 68 × 82 × 100 |
+| 25 | `tolkning-bench` | [TOLKNING 收纳长凳，手工藤编](https://www.ikea.com/se/en/p/tolkning-bench-with-storage-handmade-rattan-80512657/) | SEK 1,995 | $198.35 | 120 × 37 × 46 |
+| 26 | `giverny-picture` | [BLODFLÄDER 装饰画，莫奈《吉维尼的塞纳河》](https://www.ikea.com/se/en/p/blodflaeder-picture-the-seine-at-giverny-20601915/) | SEK 699 | $69.50 | 120 × 80 × 3（含框） |
+| 27 | `orange-flower-picture` | [BLODFLÄDER 装饰画，橙花](https://www.ikea.com/se/en/p/blodflaeder-picture-orange-flower-40601919/) | SEK 299 | $29.73 | 42 × 52 × 3（含框） |
+| 28 | `blidvader-lamp` | [BLIDVÄDER 台灯，米白陶瓷/米色](https://www.ikea.com/se/en/p/blidvaeder-table-lamp-off-white-ceramic-beige-80501258/) | SEK 699 | $69.50 | 灯罩直径 30 × 高 50 |
+| 29 | `ikornnes-standing-mirror` | [IKORNNES 落地镜，白蜡木](https://www.ikea.com/se/en/p/ikornnes-standing-mirror-ash-30298396/) | SEK 995 | $98.93 | 52 × 52 × 167 |
+| 30 | `billy-bookcase` | [BILLY 书架，橡木纹](https://www.ikea.com/se/en/p/billy-bookcase-oak-effect-10508932/) | SEK 799 | $79.44 | 80 × 28 × 202 |
+
+- **产品图**：`../新增家具官网商品图/images/`，编号 21–30，接在原来 20 张后面，用 `scripts/build-catalog.mjs --images` 生成卡片图（原 20 张的输出逐字节不变）。BILLY 的官网主图是灰色墙面背景，把与图片边缘相连的浅灰背景换成了白色；原图另存为同目录下的“BILLY 官网原图（灰背景）.jpg”。版权归 IKEA 所有，只作购买参考展示。
+- **3D 模型**：源文件在 `../新增家具3D模型/`，`scripts/build-catalog.mjs --src ../新增家具3D模型` 压缩后放进 `public/catalog/models/`（10 件共 6.5 MB，单件 0.25–1.45 MB；原 20 件共 6.6 MB）。
+  - 8 件由 `scripts/tripo-catalog.mjs` 用应用里同样的 Tripo 设置生成（`TRIPO_SETTINGS`：H3.1、精细几何、8K PBR），每件 66–94 MB；任务编号记在同目录的 `tripo-tasks.json`。藤编凳和橙花挂画的官网图（渐进式 JPEG）头几次也被拒收，重新编码成普通 JPEG 后生成成功。
+  - 地毯：Tripo 连续拒收这张俯拍图（“input image is not accessible”，没有建任务，也没有扣费），改为直接用官网俯视图做成薄片：顶面就是照片，白底抠空、保留流苏，下面垫 5 mm 厚的边。
+  - 莫奈挂画：Tripo 把这幅平面画生成成了带浮雕的箱子，不能用（这次生成的 70 积分照扣）。改用官网正面图做成 3 cm 厚的画框板，照片裁到画框，侧面和背面取画框颜色。官网图的长宽比和标称尺寸一致（1.494 对 1.5）。
+  - 这两件的生成脚本（`rug-glb.mjs`、`picture-glb.mjs`）和源文件放在一起；Tripo 生成的挂画原件也保留在那里，没有使用。
+  - 照片比例和标称尺寸不完全一致的几件（地毯、莫奈挂画、落地镜、书架）在 `source.fit` 里标了 `stretch`，按三轴分别缩放到标称尺寸；其余等比缩放。绿植的标称尺寸只有盆径和高度，`dims` 的宽和深按模型的叶展（105 × 82 cm）填写。
+  - 朝向、尺寸和贴图逐件在 three.js 里看过：都正面朝前（+Z），贴图颜色和官网图一致。书架右下角有一小块灰色残片（来自官网图的墙面阴影）。
+- **Tripo 花费**：生成前余额 24,740，生成后 24,110，共扣 630 积分（9 个任务，每个 70，含没有使用的莫奈挂画）。被拒收的提交和一次网络中断都没有建任务，也没有扣费（中断那次用余额和冻结额核对过）。
+
 ## 演示卧室（2026-10-06）
 
 - 房间：用户在 Marble 官网用 Marble 1.1 生成的世界 `dbf9b812-0db9-40c4-ae74-7fec6b05b600`（500k 与完整 `.spz`）。
